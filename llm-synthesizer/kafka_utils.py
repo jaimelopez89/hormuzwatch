@@ -6,6 +6,8 @@ from kafka import KafkaProducer, KafkaConsumer
 
 def _ssl_context():
     ca_path = os.environ["KAFKA_CA_CERT_PATH"]
+    if not os.path.exists(ca_path):
+        raise RuntimeError(f"Kafka CA cert not found at {ca_path!r}. Check KAFKA_CA_CERT_PATH in your .env")
     ctx = ssl.create_default_context()
     ctx.load_verify_locations(ca_path)
     return ctx
@@ -16,7 +18,6 @@ def make_producer():
         bootstrap_servers=os.environ["KAFKA_BOOTSTRAP_SERVERS"].split(","),
         security_protocol="SSL",
         ssl_context=_ssl_context(),
-        sasl_mechanism=None,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
         compression_type="gzip",
         linger_ms=100,
