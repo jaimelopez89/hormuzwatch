@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
@@ -28,7 +29,8 @@ KEYWORDS = [
 
 TOPIC = "news-events"
 POLL_INTERVAL = 60  # seconds
-_seen: set[str] = set()
+_seen: OrderedDict = OrderedDict()
+_SEEN_MAX = 5000
 
 
 def matches_keywords(text: str) -> bool:
@@ -65,7 +67,9 @@ def poll_once(producer):
                 event = parse_entry(entry, source)
                 if event["id"] in _seen:
                     continue
-                _seen.add(event["id"])
+                _seen[event["id"]] = True
+                if len(_seen) > _SEEN_MAX:
+                    _seen.popitem(last=False)  # evict oldest
                 producer.send(TOPIC, event)
                 log.info(f"[{source}] {entry.title[:80]}")
         except Exception as e:
