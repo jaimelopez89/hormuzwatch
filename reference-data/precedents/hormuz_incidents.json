@@ -1,0 +1,52 @@
+[
+  {
+    "id": "tanker-attacks-2019",
+    "date": "2019-06-13",
+    "description": "IRGC attacks on MT Front Altair and MV Kokuka Courageous in Gulf of Oman",
+    "brent_impact_usd": "+$3 to +$10 over 1 week",
+    "wti_impact_pct": "+4.5%",
+    "tanker_stocks_impact": "FRO +18%, STNG +14%",
+    "resolution_days": 14,
+    "closure_reached": false
+  },
+  {
+    "id": "sanctions-threat-2012",
+    "date": "2012-01-09",
+    "description": "Iran threatened to close Strait of Hormuz in response to EU oil sanctions",
+    "brent_impact_usd": "+$10 over 2 weeks",
+    "wti_impact_pct": "+15%",
+    "tanker_stocks_impact": "Tanker stocks +8-12%",
+    "resolution_days": 21,
+    "closure_reached": false
+  },
+  {
+    "id": "strait-closure-threat-2011",
+    "date": "2011-12-27",
+    "description": "Iran threatened to close strait after US sanctions on central bank",
+    "brent_impact_usd": "+$5",
+    "wti_impact_pct": "+8%",
+    "tanker_stocks_impact": "Mixed, +5% avg",
+    "resolution_days": 10,
+    "closure_reached": false
+  },
+  {
+    "id": "abqaiq-attack-2019",
+    "date": "2019-09-14",
+    "description": "Drone/missile strikes on Saudi Aramco Abqaiq facility (Houthi/Iran-linked)",
+    "brent_impact_usd": "+$12 intraday, settled +$6",
+    "wti_impact_pct": "+15% intraday",
+    "tanker_stocks_impact": "Energy majors +3-5%",
+    "resolution_days": 7,
+    "closure_reached": false
+  },
+  {
+    "id": "advantage-sweet-seizure-2023",
+    "date": "2023-04-27",
+    "description": "IRGC seized MV Advantage Sweet (Marshall Islands-flagged) in Gulf of Oman",
+    "brent_impact_usd": "+$1.50",
+    "wti_impact_pct": "+1.2%",
+    "tanker_stocks_impact": "FRO +3%",
+    "resolution_days": 90,
+    "closure_reached": false
+  }
+]

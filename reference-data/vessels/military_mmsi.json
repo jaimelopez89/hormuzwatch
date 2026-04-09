@@ -1,0 +1,11 @@
+{
+  "note": "Known IRGCN and US 5th Fleet vessel MMSIs. Supplement with ship_type=35 (military) AIS detection.",
+  "irgcn": [
+    { "mmsi": "422000001", "name": "IRGCN Patrol", "type": "patrol_boat" },
+    { "mmsi": "422000002", "name": "IRGCN Fast Attack", "type": "fast_attack" }
+  ],
+  "us5thfleet": [
+    { "mmsi": "338000001", "name": "USS Unknown", "type": "destroyer" }
+  ],
+  "ship_types_military": [35, 36]
+}
