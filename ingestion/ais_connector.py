@@ -3,7 +3,6 @@ import asyncio
 import json
 import logging
 import os
-import time
 from datetime import datetime, timezone
 
 import websockets
@@ -56,6 +55,10 @@ def parse_position(raw: dict) -> dict | None:
 
 
 async def run():
+    if make_producer is None:
+        raise RuntimeError(
+            "kafka_utils is not importable. Run from the ingestion/ directory or install dependencies."
+        )
     producer = make_producer()
     api_key = os.environ["AISSTREAM_API_KEY"]
     subscribe_msg = json.dumps({
@@ -66,14 +69,30 @@ async def run():
         ]],
         "FilterMessageTypes": ["PositionReport"],
     })
-    log.info("Connecting to AISStream for Hormuz bbox…")
-    async with websockets.connect(AIS_WS_URL) as ws:
-        await ws.send(subscribe_msg)
-        async for raw_msg in ws:
-            msg = json.loads(raw_msg)
-            pos = parse_position(msg)
-            if pos:
-                producer.send(TOPIC, pos)
+    backoff = 1
+    try:
+        while True:
+            try:
+                log.info("Connecting to AISStream for Hormuz bbox…")
+                async with websockets.connect(AIS_WS_URL) as ws:
+                    await ws.send(subscribe_msg)
+                    backoff = 1
+                    async for raw_msg in ws:
+                        try:
+                            msg = json.loads(raw_msg)
+                        except json.JSONDecodeError:
+                            log.warning("Malformed message from AISStream, skipping")
+                            continue
+                        pos = parse_position(msg)
+                        if pos:
+                            producer.send(TOPIC, pos)
+            except Exception as exc:
+                log.warning("AISStream disconnected: %s — reconnecting in %ds", exc, backoff)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60)
+    finally:
+        producer.flush()
+        producer.close()
 
 
 if __name__ == "__main__":

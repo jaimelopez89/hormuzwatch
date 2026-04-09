@@ -31,3 +31,22 @@ def test_in_hormuz_bbox():
 def test_outside_hormuz_bbox():
     assert is_in_hormuz_bbox(30.0, 56.0) is False   # too far north
     assert is_in_hormuz_bbox(26.0, 50.0) is False   # too far west
+
+
+def test_parse_position_returns_none_outside_bbox():
+    raw = {
+        "MetaData": {"MMSI": 999999999, "ShipName": "FAR AWAY", "time_utc": "2026-04-09 10:00:00"},
+        "Message": {
+            "PositionReport": {
+                "Latitude": 51.5, "Longitude": 0.0,  # London
+                "Sog": 10.0, "Cog": 0.0, "TrueHeading": 0, "NavigationalStatus": 0
+            }
+        }
+    }
+    assert parse_position(raw) is None
+
+
+def test_parse_position_returns_none_for_malformed_input():
+    assert parse_position({}) is None
+    assert parse_position({"MetaData": {}}) is None
+    assert parse_position({"MetaData": {"MMSI": 1}, "Message": {}}) is None
