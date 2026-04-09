@@ -2,7 +2,20 @@
 .env
 *.env.local
 certs/
+
+# Python
 *.pyc
 __pycache__/
+
+# Node
 node_modules/
 dist/
+
+# Java / Maven
+*.class
+*.jar
+flink-jobs/target/
+flink-jobs/dependency-reduced-pom.xml
+
+# macOS
+.DS_Store
