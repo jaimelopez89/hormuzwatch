@@ -33,3 +33,8 @@ def test_sonnet_model_for_high_risk():
     ctrl = make_ctrl()
     assert "sonnet" in ctrl.get_model(45).lower()
     assert "sonnet" in ctrl.get_model(80).lower()
+
+def test_critical_bypasses_interval():
+    ctrl = make_ctrl()
+    ctrl.last_call_time = time.time()  # just called — would normally block
+    assert ctrl.should_trigger({"severity": "CRITICAL"}, 50, 50) is True

@@ -14,12 +14,12 @@ class TriggerController:
         self.last_score = 5
 
     def should_trigger(self, event: dict, current_score: int, last_score: int) -> bool:
+        if event and event.get("severity") == "CRITICAL":
+            return True
         elapsed = time.time() - self.last_call_time
         min_interval = self._min_interval()
         if elapsed < min_interval:
             return False
-        if event and event.get("severity") == "CRITICAL":
-            return True
         if abs(current_score - last_score) >= self.SCORE_DELTA_THRESHOLD:
             return True
         return False
