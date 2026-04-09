@@ -1,0 +1,4 @@
+kafka-python==2.0.2
+feedparser==6.0.11
+yfinance==0.2.36
+python-dotenv==1.0.0
