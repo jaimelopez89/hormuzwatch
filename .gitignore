@@ -2,3 +2,5 @@
 .env
 *.env.local
 certs/
+*.pyc
+__pycache__/
