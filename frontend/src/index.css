@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+body { background: #060a0f; color: #94a3b8; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+
+.glow-primary { box-shadow: 0 0 8px #00d4ff88; }
+.glow-critical { box-shadow: 0 0 10px #ef444488; }
+.glow-medium   { box-shadow: 0 0 8px #f59e0b88; }
+
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: #00d4ff;
+  box-shadow: 0 0 6px #00d4ff; animation: pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.severity-critical { color: #ef4444; }
+.severity-high     { color: #f97316; }
+.severity-medium   { color: #f59e0b; }
+.severity-low      { color: #22c55e; }
+
+.panel { background: #071520; border: 1px solid #0f2a40; border-radius: 6px; padding: 12px; }
+.panel-label { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+  letter-spacing: 2px; color: #00d4ff; text-transform: uppercase; margin-bottom: 8px; }
