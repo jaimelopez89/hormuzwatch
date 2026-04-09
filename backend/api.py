@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import threading
+from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 import uvicorn
@@ -19,7 +20,16 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="HormuzWatch API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    t = threading.Thread(target=kafka_listener, daemon=True)
+    t.start()
+    log.info("Kafka listener started.")
+    yield
+
+
+app = FastAPI(title="HormuzWatch API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -124,13 +134,6 @@ def kafka_listener():
             state.set_briefing(value)
         elif topic == "market-ticks":
             state.update_market(value)
-
-
-@app.on_event("startup")
-def startup():
-    t = threading.Thread(target=kafka_listener, daemon=True)
-    t.start()
-    log.info("Kafka listener started.")
 
 
 if __name__ == "__main__":
