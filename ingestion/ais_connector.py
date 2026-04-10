@@ -125,26 +125,35 @@ async def run():
             "StaticDataReport",
         ],
     })
-    backoff = 1
+    log.info("AISStream API key: %s…%s", api_key[:6], api_key[-4:])
+    backoff = 2
+    consecutive_fast_fails = 0
     try:
         while True:
+            connect_time = asyncio.get_event_loop().time()
             try:
-                log.info("Connecting to AISStream for Hormuz bbox…")
+                log.info("Connecting to AISStream…")
                 ssl_ctx = ssl.create_default_context(cafile=certifi.where())
                 async with websockets.connect(
                     AIS_WS_URL, ssl=ssl_ctx,
                     ping_interval=20,
                     ping_timeout=30,
                     close_timeout=10,
+                    open_timeout=15,
                 ) as ws:
                     await ws.send(subscribe_msg)
-                    backoff = 1
+                    msgs_received = 0
                     async for raw_msg in ws:
                         try:
                             msg = json.loads(raw_msg)
                         except json.JSONDecodeError:
-                            log.warning("Malformed message from AISStream, skipping")
                             continue
+                        msgs_received += 1
+                        if msgs_received == 1:
+                            # First message — connection is healthy, reset backoff
+                            backoff = 2
+                            consecutive_fast_fails = 0
+                            log.info("AISStream connected and receiving data.")
                         msg_type = msg.get("MessageType", "")
                         if msg_type in ("ShipStaticAndVoyageRelatedData", "StaticDataReport"):
                             static = parse_static(msg)
@@ -155,9 +164,25 @@ async def run():
                             if pos:
                                 producer.send(TOPIC, pos)
             except Exception as exc:
-                log.warning("AISStream disconnected: %s — reconnecting in %ds", exc, backoff)
+                elapsed = asyncio.get_event_loop().time() - connect_time
+                if elapsed < 5:
+                    # Dropped before receiving any data — likely auth rejection or rate limit
+                    consecutive_fast_fails += 1
+                    if consecutive_fast_fails >= 3:
+                        log.error(
+                            "AISStream: %d consecutive fast disconnects. "
+                            "Possible causes: (1) API key invalid/expired — check aisstream.io, "
+                            "(2) account rate-limited from rapid reconnects. "
+                            "Waiting %ds before retry.",
+                            consecutive_fast_fails, backoff,
+                        )
+                    else:
+                        log.warning("AISStream fast disconnect (%ds): %s", int(elapsed), exc)
+                else:
+                    log.warning("AISStream disconnected after %ds: %s", int(elapsed), exc)
+                log.info("Reconnecting in %ds…", backoff)
                 await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 60)
+                backoff = min(backoff * 2, 120)
     finally:
         producer.flush()
         producer.close()

@@ -16,6 +16,10 @@ PY=$(command -v python3 || command -v python)
 (cd "$DIR/ingestion" && $PY ais_connector.py) &
 echo "✓ AIS Connector (PID $!)"
 
+# MarineTraffic tile scraper (200-400 vessels every 10 min, requires playwright)
+(cd "$DIR/ingestion" && $PY marinetraffic_scraper.py) &
+echo "✓ MarineTraffic scraper (PID $!)"
+
 # AISHub REST poller (broader coverage — free signup at aishub.net)
 if [ -n "$AISHUB_USERNAME" ]; then
   (cd "$DIR/ingestion" && $PY aishub_poller.py) &
