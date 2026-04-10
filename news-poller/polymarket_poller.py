@@ -40,6 +40,7 @@ RELEVANT_KEYWORDS = [
     "iran war", "iran attack", "iran nuclear", "nuclear deal",
     "sanctions", "embargo", "energy crisis",
     "commodity prices", "commodities",
+    "ceasefire", "peace deal", "conflict resolution",
 ]
 
 _KW_PATTERNS = [re.compile(r'\b' + re.escape(kw) + r'\b', re.I) for kw in RELEVANT_KEYWORDS]
