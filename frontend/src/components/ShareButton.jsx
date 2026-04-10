@@ -12,10 +12,17 @@ function buildShareText(status) {
   return `IS THE STRAIT OF HORMUZ OPEN? ${open}\n\nRisk: ${risk} | ${vessels} vessels tracked${pw}${poly}\n\nLive intelligence at https://hormuzwatch.io`;
 }
 
-export function ShareButton({ status }) {
+export function ShareButton({ status: statusProp, compact = false }) {
   const [copied, setCopied] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [fetchedStatus, setFetchedStatus] = useState(null);
 
+  useEffect(() => {
+    if (statusProp) return; // use prop if provided
+    fetch(`${API}/api/status`).then(r => r.ok ? r.json() : null).then(d => d && setFetchedStatus(d)).catch(() => {});
+  }, [statusProp]);
+
+  const status = statusProp || fetchedStatus;
   const text = buildShareText(status);
   const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
 
@@ -41,15 +48,16 @@ export function ShareButton({ status }) {
     <div className="relative">
       <button
         onClick={() => setMenuOpen(m => !m)}
-        className="flex items-center gap-2 font-mono text-xs px-3 py-1.5 rounded border transition-colors"
+        className="flex items-center gap-1 font-mono text-xs rounded border transition-colors"
         style={{
+          padding: compact ? "2px 8px" : "6px 12px",
           borderColor: "#00d4ff44",
           color: "#00d4ff",
           background: menuOpen ? "#00d4ff11" : "transparent",
         }}
       >
         <span>↗</span>
-        <span>SHARE</span>
+        {!compact && <span>SHARE</span>}
       </button>
 
       {menuOpen && (

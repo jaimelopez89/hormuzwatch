@@ -47,7 +47,7 @@ export function IntelFeed({ fullHeight = false, compact = false, className = "" 
     : events.filter((e) => e.severity === filter);
 
   return (
-    <div className={`panel overflow-hidden flex flex-col h-full ${className}`}>
+    <div className={`overflow-hidden flex flex-col h-full ${compact ? "p-2" : "panel"} ${className}`}>
       {/* Header row */}
       <div className="flex items-center gap-2 mb-2">
         <div className="panel-label mb-0">// Live Intelligence Feed</div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { StatusBadge } from "./StatusBadge";
+import { ShareButton } from "./ShareButton";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -99,6 +100,9 @@ export function Header() {
 
       {/* Divider */}
       <div className="w-px h-6 bg-border" />
+
+      {/* Share */}
+      <ShareButton compact />
 
       {/* UTC clock */}
       <div className="font-mono text-xs text-dimtext tabular-nums">

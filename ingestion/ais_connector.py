@@ -131,7 +131,12 @@ async def run():
             try:
                 log.info("Connecting to AISStream for Hormuz bbox…")
                 ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-                async with websockets.connect(AIS_WS_URL, ssl=ssl_ctx) as ws:
+                async with websockets.connect(
+                    AIS_WS_URL, ssl=ssl_ctx,
+                    ping_interval=20,
+                    ping_timeout=30,
+                    close_timeout=10,
+                ) as ws:
                     await ws.send(subscribe_msg)
                     backoff = 1
                     async for raw_msg in ws:

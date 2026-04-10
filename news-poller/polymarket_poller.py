@@ -23,8 +23,17 @@ GAMMA_BASE = "https://gamma-api.polymarket.com"
 TOPIC = "market-ticks"
 POLL_INTERVAL = 5 * 60  # 5 minutes
 
-# Search terms to find active Hormuz markets
-SEARCH_TERMS = ["hormuz", "strait of hormuz", "iran strait"]
+# Search terms to find active Hormuz/Iran war markets
+SEARCH_TERMS = [
+    "hormuz",
+    "strait of hormuz",
+    "iran strait",
+    "iran war",
+    "iran attack",
+    "oil embargo",
+    "persian gulf",
+    "iran nuclear",
+]
 
 
 def fetch_hormuz_markets() -> list[dict]:

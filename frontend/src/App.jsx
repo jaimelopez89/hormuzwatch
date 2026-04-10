@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Header } from "./components/Header";
 import { HeroStatus } from "./components/HeroStatus";
 import { Map } from "./components/Map";
@@ -8,13 +8,10 @@ import { VesselDetail } from "./components/VesselDetail";
 import { ToastAlerts } from "./components/ToastAlerts";
 import { TransitChart } from "./components/TransitChart";
 import { PolymarketWidget } from "./components/PolymarketWidget";
-import { ShareButton } from "./components/ShareButton";
 import { useVesselStream } from "./hooks/useVesselStream";
 import { useBriefingStream } from "./hooks/useBriefingStream";
 import { useMarketStream } from "./hooks/useMarketStream";
 import { useBrowserAlerts } from "./hooks/useBrowserAlerts";
-
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const TABS = [
   { id: "map",   label: "LIVE MAP" },
@@ -27,18 +24,9 @@ export default function App() {
   const briefing = useBriefingStream();
   const market   = useMarketStream();
   const [selectedVessel, setSelectedVessel] = useState(null);
-  const [status, setStatus] = useState(null);
   const [tab, setTab] = useState("map");
 
   useBrowserAlerts(true);
-
-  useEffect(() => {
-    const load = () =>
-      fetch(`${API}/api/status`).then(r => r.ok ? r.json() : null).then(d => d && setStatus(d)).catch(() => {});
-    load();
-    const i = setInterval(load, 15_000);
-    return () => clearInterval(i);
-  }, []);
 
   return (
     // Root: full-height flex column, nothing scrolls at this level
@@ -46,13 +34,8 @@ export default function App() {
       <Header />
       <ToastAlerts />
 
-      {/* Hero — fixed height so map below is predictable */}
+      {/* Hero — compact single row */}
       <HeroStatus />
-
-      {/* Share row */}
-      <div className="flex items-center justify-end px-4 pb-1 shrink-0">
-        <ShareButton status={status} />
-      </div>
 
       {/* Tab bar — sticky */}
       <div className="flex shrink-0 border-b" style={{ borderColor: "#0f2a40" }}>

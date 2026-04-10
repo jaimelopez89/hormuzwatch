@@ -8,7 +8,7 @@ const OPEN_CONFIG = {
     label: "STRAIT OPEN",
     sub: "Traffic flowing at normal levels",
     color: "#22c55e",
-    glow: "0 0 40px #22c55e33",
+    glow: "0 0 30px #22c55e33",
     pulse: false,
   },
   NO: {
@@ -16,7 +16,7 @@ const OPEN_CONFIG = {
     label: "DISRUPTED",
     sub: "Significant reduction in transit traffic",
     color: "#ef4444",
-    glow: "0 0 40px #ef444444",
+    glow: "0 0 30px #ef444444",
     pulse: true,
   },
   UNCERTAIN: {
@@ -24,18 +24,18 @@ const OPEN_CONFIG = {
     label: "UNCERTAIN",
     sub: "Insufficient data — monitoring active",
     color: "#f59e0b",
-    glow: "0 0 30px #f59e0b33",
+    glow: "0 0 20px #f59e0b33",
     pulse: false,
   },
 };
 
 function Signal({ label, value, color, detail }) {
   return (
-    <div className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded"
-      style={{ background: "#ffffff06", border: "1px solid #ffffff0a", minWidth: 90 }}>
-      <div className="font-mono text-xs tracking-wider" style={{ color: "#64748b", fontSize: 9 }}>{label}</div>
-      <div className="font-mono font-bold text-sm leading-tight" style={{ color: color || "#e2e8f0" }}>{value ?? "—"}</div>
-      {detail && <div className="font-mono" style={{ fontSize: 9, color: "#4a5568" }}>{detail}</div>}
+    <div className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded"
+      style={{ background: "#ffffff06", border: "1px solid #ffffff0a", minWidth: 80 }}>
+      <div className="font-mono tracking-wider" style={{ color: "#64748b", fontSize: 8 }}>{label}</div>
+      <div className="font-mono font-bold leading-tight" style={{ color: color || "#e2e8f0", fontSize: 13 }}>{value ?? "—"}</div>
+      {detail && <div className="font-mono" style={{ fontSize: 8, color: "#4a5568" }}>{detail}</div>}
     </div>
   );
 }
@@ -69,10 +69,10 @@ export function HeroStatus() {
   const cfg = OPEN_CONFIG[status?.is_open ?? "UNCERTAIN"];
   const { color, glow, pulse } = cfg;
 
-  const vessels  = status?.active_vessels;
-  const pwPct    = status?.portwatch_pct;
-  const pwDate   = status?.portwatch_latest_date;
-  const polyPct  = status?.polymarket_yes_pct;
+  const vessels   = status?.active_vessels;
+  const pwPct     = status?.portwatch_pct;
+  const pwDate    = status?.portwatch_latest_date;
+  const polyPct   = status?.polymarket_yes_pct;
   const riskScore = status?.risk_score ?? 5;
   const riskLevel = status?.risk_level ?? "LOW";
   const confidence = status?.confidence ?? "LOW";
@@ -81,26 +81,18 @@ export function HeroStatus() {
   const pwColor   = pwPct == null ? "#64748b" : pwPct >= 80 ? "#22c55e" : pwPct >= 45 ? "#f59e0b" : "#ef4444";
 
   return (
-    <div className="w-full flex flex-col items-center py-6 px-4"
-      style={{ background: `radial-gradient(ellipse 60% 80% at 50% 0%, ${color}07 0%, transparent 70%)` }}>
-
-      {/* Thin gradient top line */}
-      <div className="w-3/4 h-px mb-5" style={{ background: `linear-gradient(90deg, transparent, ${color}55, transparent)` }} />
-
-      {/* Question */}
-      <div className="font-mono tracking-widest mb-1" style={{ fontSize: 10, letterSpacing: "0.35em", color, opacity: 0.65 }}>
-        IS THE STRAIT OF HORMUZ OPEN?
-      </div>
-
-      {/* BIG ANSWER */}
+    <div
+      className="w-full flex items-center gap-6 px-6 py-3 shrink-0"
+      style={{ background: `linear-gradient(90deg, ${color}08 0%, transparent 60%)`, borderBottom: "1px solid #0f2a40" }}
+    >
+      {/* Big answer — left-anchored */}
       <div
-        className="font-mono font-black leading-none mb-2 select-all cursor-pointer"
+        className="font-mono font-black leading-none select-all cursor-pointer shrink-0"
         style={{
-          fontSize: "clamp(56px, 10vw, 96px)",
+          fontSize: "clamp(36px, 5vw, 56px)",
           color,
           textShadow: glow,
-          opacity: pulse ? (blinkOn ? 1 : 0.65) : 1,
-          letterSpacing: "0.06em",
+          opacity: pulse ? (blinkOn ? 1 : 0.6) : 1,
         }}
         title="Click to copy status"
         onClick={() => navigator.clipboard?.writeText(
@@ -110,19 +102,27 @@ export function HeroStatus() {
         {loading ? "…" : cfg.answer}
       </div>
 
-      {/* Status label */}
-      <div className="font-mono font-bold mb-0.5" style={{ color, fontSize: 12, letterSpacing: "0.18em" }}>
-        {cfg.label}
-      </div>
-      <div className="text-xs mb-4" style={{ color: "#64748b" }}>
-        {cfg.sub}
-        {confidence === "LOW" && status && (
-          <span style={{ color: "#374151" }}> · confidence LOW</span>
-        )}
+      {/* Label + question stack */}
+      <div className="flex flex-col shrink-0">
+        <div className="font-mono tracking-widest" style={{ fontSize: 9, color, opacity: 0.6 }}>
+          IS HORMUZ OPEN?
+        </div>
+        <div className="font-mono font-bold" style={{ color, fontSize: 11, letterSpacing: "0.15em" }}>
+          {cfg.label}
+        </div>
+        <div style={{ fontSize: 10, color: "#64748b" }}>
+          {cfg.sub}
+          {confidence === "LOW" && status && (
+            <span style={{ color: "#374151" }}> · low confidence</span>
+          )}
+        </div>
       </div>
 
-      {/* Signal pills */}
-      <div className="flex flex-wrap gap-2 justify-center mb-4">
+      {/* Divider */}
+      <div className="w-px self-stretch shrink-0" style={{ background: "#0f2a40" }} />
+
+      {/* Signal pills — horizontal scroll on narrow screens */}
+      <div className="flex gap-2 overflow-x-auto flex-1 min-w-0">
         <Signal
           label="VESSELS IN AOR"
           value={vessels ?? "—"}
@@ -137,14 +137,14 @@ export function HeroStatus() {
             detail={`of baseline${pwDate ? " · " + pwDate : ""}`}
           />
         ) : (
-          <Signal label="IMF PORTWATCH" value="loading" color="#374151" detail="transit data" />
+          <Signal label="IMF PORTWATCH" value="…" color="#374151" detail="transit data" />
         )}
         {polyPct != null && (
           <Signal
-            label="POLYMARKET"
+            label="PREDICTION MKT"
             value={`${polyPct}%`}
             color={polyPct >= 70 ? "#22c55e" : polyPct >= 40 ? "#f59e0b" : "#ef4444"}
-            detail="market YES odds"
+            detail="Kalshi · Polymarket YES"
           />
         )}
         <Signal
@@ -154,13 +154,6 @@ export function HeroStatus() {
           detail={riskLevel}
         />
       </div>
-
-      {/* Sources */}
-      <div className="font-mono" style={{ fontSize: 9, color: "#374151", letterSpacing: "0.05em" }}>
-        IMF PortWatch · AISStream · Polymarket · Reuters · USNI · 22 feeds · AI synthesis
-      </div>
-
-      <div className="w-3/4 h-px mt-5" style={{ background: `linear-gradient(90deg, transparent, ${color}22, transparent)` }} />
     </div>
   );
 }

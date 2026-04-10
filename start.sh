@@ -40,6 +40,10 @@ echo "✓ PortWatch Poller (PID $!)"
 (cd "$DIR/news-poller" && $PY polymarket_poller.py) &
 echo "✓ Polymarket Poller (PID $!)"
 
+# Kalshi Poller (Iran/Hormuz prediction markets, no API key needed)
+(cd "$DIR/news-poller" && $PY kalshi_poller.py) &
+echo "✓ Kalshi Poller (PID $!)"
+
 # LLM Synthesizer
 (cd "$DIR/llm-synthesizer" && $PY synthesizer.py) &
 echo "✓ LLM Synthesizer (PID $!)"
