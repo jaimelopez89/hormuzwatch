@@ -293,7 +293,7 @@ async def stream_status():
 
 def kafka_listener():
     consumer = make_consumer(
-        ["ais-positions", "intelligence-events", "briefings", "market-ticks", "portwatch-data"],
+        ["ais-positions", "intelligence-events", "briefings", "market-ticks"],
         "hormuzwatch-backend",
     )
     for msg in consumer:

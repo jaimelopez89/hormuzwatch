@@ -9,6 +9,7 @@ on a 7-day moving average. Market price = YES probability (0-1).
 """
 import json
 import logging
+import re
 import time
 from datetime import datetime, timezone
 
@@ -31,19 +32,22 @@ SEARCH_TERMS = [
     "persian gulf", "middle east war",
 ]
 
-# Keyword filter — market question must contain at least one of these to be included
+# Keyword filter — whole-word match to avoid false positives like "Oilers"→"oil"
 RELEVANT_KEYWORDS = [
     "iran", "hormuz", "strait", "persian gulf", "middle east",
-    "oil", "crude", "brent", "wti", "opec", "energy",
-    "inflation", "cpi", "fed rate", "recession",
-    "war", "conflict", "attack", "nuclear", "sanctions",
-    "commodity", "commodities",
+    "crude oil", "oil price", "oil barrel", "brent", "wti", "opec",
+    "inflation", "cpi", "federal reserve", "fed rate", "recession",
+    "iran war", "iran attack", "iran nuclear", "nuclear deal",
+    "sanctions", "embargo", "energy crisis",
+    "commodity prices", "commodities",
 ]
+
+_KW_PATTERNS = [re.compile(r'\b' + re.escape(kw) + r'\b', re.I) for kw in RELEVANT_KEYWORDS]
 
 
 def is_relevant(market: dict) -> bool:
-    text = (market.get("question", "") + " " + market.get("description", "")).lower()
-    return any(kw in text for kw in RELEVANT_KEYWORDS)
+    text = market.get("question", "") + " " + market.get("description", "")
+    return any(p.search(text) for p in _KW_PATTERNS)
 
 
 def fetch_hormuz_markets() -> list[dict]:

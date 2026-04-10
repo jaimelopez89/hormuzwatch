@@ -9,6 +9,7 @@ Kalshi markets resolve YES/NO based on real-world events.
 Price = probability of YES outcome (0-1), displayed as percentage.
 """
 import logging
+import re
 import time
 from datetime import datetime, timezone
 
@@ -31,14 +32,17 @@ SEARCH_TERMS = [
     "middle east", "nuclear",
 ]
 
-# Keyword filter — market must relate to Iran/commodities/inflation
+# Keyword filter — whole-word match, Iran/commodities/macro only
 RELEVANT_KEYWORDS = [
     "iran", "hormuz", "strait", "persian gulf", "middle east",
-    "oil", "crude", "brent", "wti", "opec", "energy", "gasoline",
-    "inflation", "cpi", "fed", "rate", "recession",
-    "war", "conflict", "attack", "nuclear", "sanctions",
-    "commodity", "commodities", "barrel",
+    "crude oil", "oil price", "brent", "wti", "opec", "gasoline",
+    "inflation", "cpi", "federal reserve", "recession",
+    "iran war", "iran attack", "iran nuclear", "nuclear deal",
+    "sanctions", "oil embargo", "energy crisis",
+    "commodities", "oil barrel",
 ]
+
+_KW_PATTERNS = [re.compile(r'\b' + re.escape(kw) + r'\b', re.I) for kw in RELEVANT_KEYWORDS]
 
 
 def is_relevant(market: dict) -> bool:
@@ -46,8 +50,8 @@ def is_relevant(market: dict) -> bool:
         market.get("title", "") + " " +
         market.get("subtitle", "") + " " +
         market.get("category", "")
-    ).lower()
-    return any(kw in text for kw in RELEVANT_KEYWORDS)
+    )
+    return any(p.search(text) for p in _KW_PATTERNS)
 
 
 def fetch_markets(term: str) -> list[dict]:

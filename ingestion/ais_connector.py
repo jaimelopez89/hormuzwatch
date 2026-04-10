@@ -123,7 +123,7 @@ async def run():
         ]],
     })
     log.info("AISStream API key: %s…%s", api_key[:6], api_key[-4:])
-    backoff = 2
+    backoff = 30          # start at 30s — not 2s
     consecutive_fast_fails = 0
     try:
         while True:
@@ -161,10 +161,8 @@ async def run():
                     consecutive_fast_fails += 1
                     if consecutive_fast_fails >= 3:
                         log.error(
-                            "AISStream: %d consecutive fast disconnects. "
-                            "Possible causes: (1) API key invalid/expired — check aisstream.io, "
-                            "(2) account rate-limited from rapid reconnects. "
-                            "Waiting %ds before retry.",
+                            "AISStream: %d consecutive fast disconnects — likely IP rate-limited "
+                            "from earlier reconnect storm. Waiting %ds. Will self-resolve.",
                             consecutive_fast_fails, backoff,
                         )
                     else:
@@ -173,7 +171,7 @@ async def run():
                     log.warning("AISStream disconnected after %ds: %s", int(elapsed), exc)
                 log.info("Reconnecting in %ds…", backoff)
                 await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 120)
+                backoff = min(backoff * 2, 600)  # cap at 10 min between retries
     finally:
         producer.flush()
         producer.close()
