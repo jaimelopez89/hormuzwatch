@@ -3,8 +3,10 @@ import asyncio
 import json
 import logging
 import os
+import ssl
 from datetime import datetime, timezone
 
+import certifi
 import websockets
 from dotenv import load_dotenv
 
@@ -110,18 +112,15 @@ async def run():
         )
     producer = make_producer()
     api_key = os.environ["AISSTREAM_API_KEY"]
+    # Only APIKey + BoundingBoxes — no FilterMessageTypes.
+    # AISStream drops connections immediately if it doesn't recognise a filter value.
+    # We filter client-side by MessageType instead.
     subscribe_msg = json.dumps({
         "APIKey": api_key,
         "BoundingBoxes": [[
             [HORMUZ_BBOX["min_lat"], HORMUZ_BBOX["min_lon"]],
             [HORMUZ_BBOX["max_lat"], HORMUZ_BBOX["max_lon"]],
         ]],
-        "FilterMessageTypes": [
-            "PositionReport",
-            "StandardClassBPositionReport",
-            "ShipStaticAndVoyageRelatedData",
-            "StaticDataReport",
-        ],
     })
     log.info("AISStream API key: %s…%s", api_key[:6], api_key[-4:])
     backoff = 2
@@ -131,7 +130,8 @@ async def run():
             connect_time = asyncio.get_event_loop().time()
             try:
                 log.info("Connecting to AISStream…")
-                async with websockets.connect(AIS_WS_URL) as ws:
+                ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+                async with websockets.connect(AIS_WS_URL, ssl=ssl_ctx) as ws:
                     await ws.send(subscribe_msg)
                     msgs_received = 0
                     async for raw_msg in ws:

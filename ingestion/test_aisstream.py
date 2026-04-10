@@ -1,7 +1,9 @@
 """Quick connectivity test — run this to verify your AISStream API key works."""
 import asyncio
 import json
+import ssl
 import sys
+import certifi
 import websockets
 
 API_KEY = "79bdbc48d8f53e47d7d821aab860bd12fb97de92"
@@ -10,14 +12,14 @@ URL = "wss://stream.aisstream.io/v0/stream"
 SUBSCRIBE = {
     "APIKey": API_KEY,
     "BoundingBoxes": [[[22.0, 54.0], [28.0, 62.0]]],
-    "FilterMessageTypes": ["PositionReport"],
 }
 
 
 async def test():
     print(f"Connecting to {URL} …")
     try:
-        async with websockets.connect(URL) as ws:
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        async with websockets.connect(URL, ssl=ssl_ctx) as ws:
             print("Connected. Sending subscribe…")
             await ws.send(json.dumps(SUBSCRIBE))
             print("Waiting for first message (up to 30s)…")
