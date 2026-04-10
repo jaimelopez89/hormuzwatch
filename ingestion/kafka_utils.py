@@ -1,15 +1,36 @@
 import json
+import logging
 import os
 import ssl
 from kafka import KafkaProducer, KafkaConsumer
 
+# Suppress noisy connection debug logs — node flapping is non-critical
+logging.getLogger("kafka.conn").setLevel(logging.WARNING)
+logging.getLogger("kafka.client").setLevel(logging.WARNING)
+logging.getLogger("kafka.cluster").setLevel(logging.WARNING)
+
+# kafka_utils.py lives one level inside the project root (ingestion/, backend/, etc.)
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _resolve(path: str) -> str:
+    """Resolve a relative path against the project root, not the CWD."""
+    if os.path.isabs(path):
+        return path
+    return os.path.join(_PROJECT_ROOT, path)
+
 
 def _ssl_context():
-    ca_path = os.environ["KAFKA_CA_CERT_PATH"]
+    ca_path = _resolve(os.environ["KAFKA_CA_CERT_PATH"])
     if not os.path.exists(ca_path):
         raise RuntimeError(f"Kafka CA cert not found at {ca_path!r}. Check KAFKA_CA_CERT_PATH in your .env")
     ctx = ssl.create_default_context()
     ctx.load_verify_locations(ca_path)
+    # Aiven requires mutual TLS — load client cert + key
+    cert_path = _resolve(os.environ.get("KAFKA_SSL_CERT_PATH", ""))
+    key_path = _resolve(os.environ.get("KAFKA_SSL_KEY_PATH", ""))
+    if cert_path and key_path:
+        ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
     return ctx
 
 

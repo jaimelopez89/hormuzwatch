@@ -56,10 +56,10 @@ async def fetch_tiles() -> list[dict]:
         )
         page = await context.new_page()
 
-        # Visit the map first to pick up session cookies
+        # Visit the map first to pick up session cookies and pass bot detection
         try:
-            await page.goto(MT_HOME, wait_until="domcontentloaded", timeout=30_000)
-            await asyncio.sleep(2)
+            await page.goto(MT_HOME, wait_until="networkidle", timeout=30_000)
+            await asyncio.sleep(3)
         except Exception as e:
             log.debug("MT home page visit failed (non-fatal): %s", e)
 
@@ -67,8 +67,21 @@ async def fetch_tiles() -> list[dict]:
         for tile in TILES:
             url = MT_TILE_URL.format(x=tile["x"], y=tile["y"])
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=20_000)
-                text = await page.evaluate("() => document.body.innerText")
+                # Use response.body() — more reliable than document.body.innerText
+                # which is empty when Cloudflare serves a JS challenge page
+                response = await page.goto(url, wait_until="domcontentloaded", timeout=20_000)
+                if response is None:
+                    log.warning("Tile (%d,%d): no response", tile["x"], tile["y"])
+                    continue
+                body = await response.body()
+                text = body.decode("utf-8").strip()
+                if not text:
+                    log.warning("Tile (%d,%d): empty response (status %d)", tile["x"], tile["y"], response.status)
+                    continue
+                if not text.startswith("{") and not text.startswith("["):
+                    log.warning("Tile (%d,%d): non-JSON response (status %d): %s…",
+                                tile["x"], tile["y"], response.status, text[:120])
+                    continue
                 data = json.loads(text)
                 if isinstance(data, dict):
                     rows = data.get("data", {}).get("rows", [])
@@ -77,7 +90,7 @@ async def fetch_tiles() -> list[dict]:
                 else:
                     rows = []
                 all_rows.extend(rows)
-                log.debug("Tile (%d,%d): %d vessels", tile["x"], tile["y"], len(rows))
+                log.info("Tile (%d,%d): %d vessels", tile["x"], tile["y"], len(rows))
                 await asyncio.sleep(1)
             except Exception as e:
                 log.warning("Tile (%d,%d) failed: %s", tile["x"], tile["y"], e)
