@@ -60,22 +60,18 @@ def get_market():
 
 @app.get("/api/risk")
 def get_risk():
-    return {
-        "score": state.risk_score,
-        "level": _risk_level(state.risk_score),
-    }
+    return state.get_risk()
+
+
+@app.get("/api/stats")
+def get_stats():
+    return state.stats()
 
 
 @app.get("/api/events")
 def get_events(limit: int = 50):
     return list(state.events)[:limit]
 
-
-def _risk_level(score: int) -> str:
-    if score >= 80: return "CRITICAL"
-    if score >= 60: return "HIGH"
-    if score >= 40: return "ELEVATED"
-    return "LOW"
 
 
 # ── SSE endpoints ───────────────────────────────────────────────────────────
@@ -129,7 +125,6 @@ def kafka_listener():
             state.update_vessel(value)
         elif topic == "intelligence-events":
             state.add_event(value)
-            state.risk_score = min(100, state.risk_score + value.get("scoreContribution", 0))
         elif topic == "briefings":
             state.set_briefing(value)
         elif topic == "market-ticks":

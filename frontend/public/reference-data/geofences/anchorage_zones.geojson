@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Khor Fakkan Anchorage" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [56.35, 25.33], [56.45, 25.33],
+          [56.45, 25.43], [56.35, 25.43], [56.35, 25.33]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Fujairah Anchorage" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [56.33, 25.10], [56.43, 25.10],
+          [56.43, 25.20], [56.33, 25.20], [56.33, 25.10]
+        ]]
+      }
+    }
+  ]
+}

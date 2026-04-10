@@ -10,16 +10,31 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 SYMBOLS = [
+    # Crude oil benchmarks
     {"symbol": "CL=F",  "name": "WTI Crude"},
     {"symbol": "BZ=F",  "name": "Brent Crude"},
     {"symbol": "NG=F",  "name": "Natural Gas"},
+
+    # Tanker pure-plays — most sensitive to Hormuz risk premium
     {"symbol": "FRO",   "name": "Frontline"},
     {"symbol": "STNG",  "name": "Scorpio Tankers"},
     {"symbol": "DHT",   "name": "DHT Holdings"},
+    {"symbol": "TK",    "name": "Teekay Corp"},
+    {"symbol": "NAT",   "name": "Nordic American Tankers"},
+
+    # Majors
     {"symbol": "XOM",   "name": "ExxonMobil"},
     {"symbol": "CVX",   "name": "Chevron"},
     {"symbol": "BP",    "name": "BP"},
-    {"symbol": "ITA",   "name": "US Aerospace & Defense ETF"},
+    {"symbol": "SHEL",  "name": "Shell"},
+    {"symbol": "TTE",   "name": "TotalEnergies"},
+
+    # Defence
+    {"symbol": "ITA",   "name": "US A&D ETF"},
+    {"symbol": "LMT",   "name": "Lockheed Martin"},
+    {"symbol": "RTX",   "name": "RTX Corp"},
+
+    # Shipping
     {"symbol": "ZIM",   "name": "ZIM Shipping"},
 ]
 
