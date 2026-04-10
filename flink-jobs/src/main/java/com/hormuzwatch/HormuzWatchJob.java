@@ -88,9 +88,17 @@ public class HormuzWatchJob {
         Properties p = new Properties();
         p.put("bootstrap.servers", System.getenv("KAFKA_BOOTSTRAP_SERVERS"));
         p.put("security.protocol", "SSL");
-        p.put("ssl.truststore.location", System.getenv("KAFKA_TRUSTSTORE_PATH"));
-        p.put("ssl.truststore.password",
-            System.getenv().getOrDefault("KAFKA_TRUSTSTORE_PASSWORD", ""));
+        // Support both PEM cert (cloud) and JKS truststore (local)
+        String caCert = System.getenv("KAFKA_CA_CERT");
+        if (caCert != null && !caCert.isEmpty()) {
+            p.put("ssl.truststore.type", "PEM");
+            p.put("ssl.truststore.certificates", caCert);
+        } else {
+            p.put("ssl.truststore.location",
+                System.getenv().getOrDefault("KAFKA_TRUSTSTORE_PATH", ""));
+            p.put("ssl.truststore.password",
+                System.getenv().getOrDefault("KAFKA_TRUSTSTORE_PASSWORD", ""));
+        }
         return p;
     }
 
