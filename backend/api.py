@@ -22,11 +22,70 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
+def _bootstrap_portwatch():
+    """Fetch PortWatch data directly on startup — don't wait for Kafka."""
+    import requests
+    try:
+        ARCGIS_URL = (
+            "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services"
+            "/Daily_Chokepoints_Data/FeatureServer/0/query"
+        )
+        PARAMS = {
+            "where": "portid='chokepoint6'",
+            "outFields": "*",
+            "orderByFields": "date DESC",
+            "resultRecordCount": 365,
+            "f": "json",
+        }
+        resp = requests.get(ARCGIS_URL, params=PARAMS, timeout=20)
+        resp.raise_for_status()
+        features = resp.json().get("features", [])
+        from datetime import datetime, timezone
+        records = []
+        for feat in features:
+            a = feat.get("attributes", {})
+            ts_ms = a.get("date")
+            date_str = (
+                datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+                if ts_ms else None
+            )
+            records.append({
+                "date": date_str,
+                "n_total": a.get("n_total") or 0,
+                "n_tanker": a.get("n_tanker") or 0,
+                "n_container": a.get("n_container") or 0,
+                "n_dry_bulk": a.get("n_dry_bulk") or 0,
+                "n_general_cargo": a.get("n_general_cargo") or 0,
+                "n_roro": a.get("n_roro") or 0,
+            })
+        records.sort(key=lambda r: r["date"] or "")
+        recent = [r["n_total"] for r in records[-90:] if r["n_total"] > 0]
+        avg_90 = sum(recent) / len(recent) if recent else 0
+        latest = records[-1] if records else {}
+        pct = round(latest.get("n_total", 0) / avg_90 * 100, 1) if avg_90 else 0
+        state.set_portwatch({
+            "source": "imf_portwatch",
+            "latest_date": latest.get("date"),
+            "latest_total": latest.get("n_total", 0),
+            "latest_tanker": latest.get("n_tanker", 0),
+            "avg_90d": round(avg_90, 1),
+            "pct_of_baseline": pct,
+            "days": records[-90:],
+            "all_days": records,
+        })
+        log.info(f"PortWatch bootstrapped: {latest.get('date')} — {latest.get('n_total')} vessels ({pct}% of 90d avg {avg_90:.0f})")
+    except Exception as e:
+        log.warning(f"PortWatch bootstrap failed (non-fatal): {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     t = threading.Thread(target=kafka_listener, daemon=True)
     t.start()
     log.info("Kafka listener started.")
+    # Pre-populate PortWatch so status is immediately useful
+    pw_thread = threading.Thread(target=_bootstrap_portwatch, daemon=True)
+    pw_thread.start()
     yield
 
 

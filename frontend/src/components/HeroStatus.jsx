@@ -5,165 +5,162 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const OPEN_CONFIG = {
   YES: {
     answer: "YES",
-    label: "STRAIT IS OPEN",
-    sub: "Traffic flowing normally",
+    label: "STRAIT OPEN",
+    sub: "Traffic flowing at normal levels",
     color: "#22c55e",
-    glow: "0 0 40px #22c55e33, 0 0 80px #22c55e11",
-    border: "#22c55e44",
-    bg: "#22c55e08",
+    glow: "0 0 40px #22c55e33",
     pulse: false,
   },
   NO: {
     answer: "NO",
-    label: "STRAIT COMPROMISED",
-    sub: "Significant disruption detected",
+    label: "DISRUPTED",
+    sub: "Significant reduction in transit traffic",
     color: "#ef4444",
-    glow: "0 0 40px #ef444444, 0 0 80px #ef444422",
-    border: "#ef444466",
-    bg: "#ef444408",
+    glow: "0 0 40px #ef444444",
     pulse: true,
   },
   UNCERTAIN: {
     answer: "?",
-    label: "STATUS UNCERTAIN",
-    sub: "Conflicting signals — monitor closely",
+    label: "UNCERTAIN",
+    sub: "Insufficient data — monitoring active",
     color: "#f59e0b",
-    glow: "0 0 30px #f59e0b33, 0 0 60px #f59e0b11",
-    border: "#f59e0b44",
-    bg: "#f59e0b08",
+    glow: "0 0 30px #f59e0b33",
     pulse: false,
   },
 };
 
-function Signal({ label, value, color, sub }) {
+function Signal({ label, value, color, detail }) {
   return (
-    <div className="flex flex-col items-center gap-0.5 px-4 py-2 rounded"
-      style={{ background: "#ffffff06", border: "1px solid #ffffff0f" }}>
-      <div className="font-mono text-xs tracking-widest text-dimtext">{label}</div>
-      <div className="font-mono font-bold text-base" style={{ color: color || "#e2e8f0" }}>{value}</div>
-      {sub && <div className="text-xs text-dimtext">{sub}</div>}
+    <div className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded"
+      style={{ background: "#ffffff06", border: "1px solid #ffffff0a", minWidth: 90 }}>
+      <div className="font-mono text-xs tracking-wider" style={{ color: "#64748b", fontSize: 9 }}>{label}</div>
+      <div className="font-mono font-bold text-sm leading-tight" style={{ color: color || "#e2e8f0" }}>{value ?? "—"}</div>
+      {detail && <div className="font-mono" style={{ fontSize: 9, color: "#4a5568" }}>{detail}</div>}
     </div>
   );
 }
 
 export function HeroStatus() {
   const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [blinkOn, setBlinkOn] = useState(true);
   const esRef = useRef(null);
 
   useEffect(() => {
-    // Initial fetch
-    fetch(`${API}/api/status`).then(r => r.ok ? r.json() : null).then(d => d && setStatus(d)).catch(() => {});
+    fetch(`${API}/api/status`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) { setStatus(d); setLoading(false); } })
+      .catch(() => setLoading(false));
 
-    // SSE for live updates
     function connect() {
       const es = new EventSource(`${API}/stream/status`);
       esRef.current = es;
-      es.onmessage = (e) => { try { setStatus(JSON.parse(e.data)); } catch {} };
+      es.onmessage = (e) => {
+        try { const d = JSON.parse(e.data); setStatus(d); setLoading(false); } catch {}
+      };
       es.onerror = () => { es.close(); setTimeout(connect, 5000); };
     }
     connect();
 
-    // Blink for CRITICAL state
-    const blink = setInterval(() => setBlinkOn(b => !b), 800);
+    const blink = setInterval(() => setBlinkOn(b => !b), 700);
     return () => { esRef.current?.close(); clearInterval(blink); };
   }, []);
 
-  const cfg = OPEN_CONFIG[status?.is_open || "UNCERTAIN"];
-  const { color, glow, border, bg, pulse } = cfg;
+  const cfg = OPEN_CONFIG[status?.is_open ?? "UNCERTAIN"];
+  const { color, glow, pulse } = cfg;
 
-  const polyPct = status?.polymarket_yes_pct;
-  const pwPct = status?.portwatch_pct;
-  const vessels = status?.active_vessels || 0;
-  const risk = status?.risk_level || "UNKNOWN";
-  const riskScore = status?.risk_score || 0;
+  const vessels  = status?.active_vessels;
+  const pwPct    = status?.portwatch_pct;
+  const pwDate   = status?.portwatch_latest_date;
+  const polyPct  = status?.polymarket_yes_pct;
+  const riskScore = status?.risk_score ?? 5;
+  const riskLevel = status?.risk_level ?? "LOW";
+  const confidence = status?.confidence ?? "LOW";
+
+  const riskColor = riskLevel === "CRITICAL" ? "#ef4444" : riskLevel === "HIGH" ? "#f97316" : riskLevel === "ELEVATED" ? "#f59e0b" : "#22c55e";
+  const pwColor   = pwPct == null ? "#64748b" : pwPct >= 80 ? "#22c55e" : pwPct >= 45 ? "#f59e0b" : "#ef4444";
 
   return (
-    <div
-      className="relative w-full flex flex-col items-center justify-center py-8 px-4"
-      style={{ background: `radial-gradient(ellipse at center, ${color}06 0%, transparent 70%)` }}
-    >
-      {/* Decorative top border */}
-      <div className="w-full h-px mb-6" style={{ background: `linear-gradient(90deg, transparent, ${color}44, transparent)` }} />
+    <div className="w-full flex flex-col items-center py-6 px-4"
+      style={{ background: `radial-gradient(ellipse 60% 80% at 50% 0%, ${color}07 0%, transparent 70%)` }}>
+
+      {/* Thin gradient top line */}
+      <div className="w-3/4 h-px mb-5" style={{ background: `linear-gradient(90deg, transparent, ${color}55, transparent)` }} />
 
       {/* Question */}
-      <div
-        className="font-mono tracking-widest text-center mb-2"
-        style={{ fontSize: 11, letterSpacing: "0.3em", color: color, opacity: 0.7 }}
-      >
+      <div className="font-mono tracking-widest mb-1" style={{ fontSize: 10, letterSpacing: "0.35em", color, opacity: 0.65 }}>
         IS THE STRAIT OF HORMUZ OPEN?
       </div>
 
       {/* BIG ANSWER */}
       <div
-        className="font-mono font-black text-center leading-none mb-3 select-all"
+        className="font-mono font-black leading-none mb-2 select-all cursor-pointer"
         style={{
-          fontSize: "clamp(60px, 12vw, 120px)",
-          color: color,
+          fontSize: "clamp(56px, 10vw, 96px)",
+          color,
           textShadow: glow,
-          opacity: pulse ? (blinkOn ? 1 : 0.7) : 1,
-          letterSpacing: "0.05em",
-          cursor: "pointer",
+          opacity: pulse ? (blinkOn ? 1 : 0.65) : 1,
+          letterSpacing: "0.06em",
         }}
-        title="Click to copy current status"
-        onClick={() => navigator.clipboard?.writeText(`Is the Strait of Hormuz open? ${cfg.answer} — ${cfg.label}. Live at hormuzwatch.io`)}
+        title="Click to copy status"
+        onClick={() => navigator.clipboard?.writeText(
+          `Is the Strait of Hormuz open? ${cfg.answer} — ${cfg.label} | ${window.location.href}`
+        )}
       >
-        {cfg.answer}
+        {loading ? "…" : cfg.answer}
       </div>
 
-      {/* Label + sub */}
-      <div className="font-mono font-bold text-center mb-1" style={{ color, fontSize: 13, letterSpacing: "0.15em" }}>
+      {/* Status label */}
+      <div className="font-mono font-bold mb-0.5" style={{ color, fontSize: 12, letterSpacing: "0.18em" }}>
         {cfg.label}
       </div>
-      <div className="text-sm text-dimtext text-center mb-6">{cfg.sub}</div>
+      <div className="text-xs mb-4" style={{ color: "#64748b" }}>
+        {cfg.sub}
+        {confidence === "LOW" && status && (
+          <span style={{ color: "#374151" }}> · confidence LOW</span>
+        )}
+      </div>
 
-      {/* Signal indicators */}
+      {/* Signal pills */}
       <div className="flex flex-wrap gap-2 justify-center mb-4">
         <Signal
-          label="ACTIVE VESSELS"
-          value={vessels || "—"}
+          label="VESSELS IN AOR"
+          value={vessels ?? "—"}
           color="#00d4ff"
-          sub="in AOR"
+          detail="live AIS"
         />
-        {pwPct != null && (
+        {pwPct != null ? (
           <Signal
             label="TRANSIT FLOW"
             value={`${pwPct}%`}
-            color={pwPct >= 85 ? "#22c55e" : pwPct >= 50 ? "#f59e0b" : "#ef4444"}
-            sub="of 90d baseline"
+            color={pwColor}
+            detail={`of baseline${pwDate ? " · " + pwDate : ""}`}
           />
+        ) : (
+          <Signal label="IMF PORTWATCH" value="loading" color="#374151" detail="transit data" />
         )}
         {polyPct != null && (
           <Signal
-            label="MARKETS SAY"
-            value={`${polyPct}% YES`}
+            label="POLYMARKET"
+            value={`${polyPct}%`}
             color={polyPct >= 70 ? "#22c55e" : polyPct >= 40 ? "#f59e0b" : "#ef4444"}
-            sub="Polymarket odds"
+            detail="market YES odds"
           />
         )}
         <Signal
-          label="THREAT INDEX"
+          label="RISK INDEX"
           value={`${riskScore}/100`}
-          color={risk === "CRITICAL" ? "#ef4444" : risk === "HIGH" ? "#f97316" : risk === "ELEVATED" ? "#f59e0b" : "#22c55e"}
-          sub={risk}
+          color={riskColor}
+          detail={riskLevel}
         />
-        {status?.portwatch_latest_date && (
-          <Signal
-            label="IMF DATA AS OF"
-            value={status.portwatch_latest_date}
-            color="#64748b"
-            sub="PortWatch lag ~4 days"
-          />
-        )}
       </div>
 
-      {/* Data sources credit */}
-      <div className="font-mono text-xs text-dimtext text-center" style={{ opacity: 0.5 }}>
-        Sources: AISStream · IMF PortWatch · Polymarket · Reuters · USNI · LLM synthesis
+      {/* Sources */}
+      <div className="font-mono" style={{ fontSize: 9, color: "#374151", letterSpacing: "0.05em" }}>
+        IMF PortWatch · AISStream · Polymarket · Reuters · USNI · 22 feeds · AI synthesis
       </div>
 
-      {/* Bottom border */}
-      <div className="w-full h-px mt-6" style={{ background: `linear-gradient(90deg, transparent, ${color}22, transparent)` }} />
+      <div className="w-3/4 h-px mt-5" style={{ background: `linear-gradient(90deg, transparent, ${color}22, transparent)` }} />
     </div>
   );
 }

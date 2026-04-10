@@ -32,7 +32,7 @@ class AppState:
     daily_transits: dict = field(default_factory=dict)  # date → set of mmsis
 
     VESSEL_TTL = 8 * 3600          # 8 hours — keep vessels longer for better coverage
-    RISK_DECAY_PER_HOUR = 3        # score decays 3 pts/hr toward baseline of 5
+    RISK_DECAY_PER_HOUR = 15       # score decays 15 pts/hr — resets to baseline in ~6h
     RISK_BASELINE = 5
 
     def update_vessel(self, pos: dict):
@@ -88,50 +88,64 @@ class AppState:
 
     def get_status(self) -> dict:
         """
-        Unified 'Is Hormuz Open?' determination using multiple signals:
-        1. IMF PortWatch transit count vs 90-day baseline
-        2. Polymarket YES probability
-        3. Our own risk score
-        4. Active vessel count vs expected
+        Unified 'Is Hormuz Open?' determination.
+        Primary authority: IMF PortWatch (most reliable, objective)
+        Secondary: Polymarket prediction markets
+        Tertiary: Risk score (soft signal, recency-weighted)
         """
         risk = self.get_risk()
 
-        # PortWatch signal
+        # PortWatch signal — primary, most authoritative
         pw_signal = None
         pw_pct = None
         if self.portwatch:
             pw_pct = self.portwatch.get("pct_of_baseline", 0)
-            if pw_pct >= 85:   pw_signal = "OPEN"
-            elif pw_pct >= 50: pw_signal = "REDUCED"
+            if pw_pct >= 80:   pw_signal = "OPEN"
+            elif pw_pct >= 45: pw_signal = "REDUCED"
             else:              pw_signal = "DISRUPTED"
 
-        # Polymarket signal
+        # Polymarket signal — secondary
         poly_signal = None
         poly_pct = None
         poly_markets = [m for m in self.polymarkets.values() if m.get("yes_probability") is not None]
         if poly_markets:
             poly_pct = max(m["yes_probability"] for m in poly_markets)
-            if poly_pct >= 75:   poly_signal = "OPEN"
-            elif poly_pct >= 40: poly_signal = "UNCERTAIN"
+            if poly_pct >= 70:   poly_signal = "OPEN"
+            elif poly_pct >= 40: poly_signal = "REDUCED"
             else:                poly_signal = "DISRUPTED"
 
-        # Risk score signal (inverted — high risk = not open)
-        risk_signal = "OPEN"
+        # Risk score signal — tertiary (only strong signal if CRITICAL)
+        risk_signal = None
         if risk["level"] == "CRITICAL": risk_signal = "DISRUPTED"
         elif risk["level"] == "HIGH":   risk_signal = "REDUCED"
-        elif risk["level"] == "ELEVATED": risk_signal = "UNCERTAIN"
+        # LOW/ELEVATED don't contribute to avoid false positives
 
-        # Consensus determination
-        signals = [s for s in [pw_signal, poly_signal, risk_signal] if s]
-        if "DISRUPTED" in signals:
-            is_open = "NO"
-            confidence = "HIGH" if signals.count("DISRUPTED") >= 2 else "MEDIUM"
-        elif "REDUCED" in signals and signals.count("OPEN") < 2:
+        # Priority: PortWatch > Polymarket > Risk
+        if pw_signal is not None:
+            # We have authoritative data — use it directly
+            if pw_signal == "OPEN":
+                is_open = "YES"
+                confidence = "HIGH"
+            elif pw_signal == "DISRUPTED":
+                is_open = "NO"
+                confidence = "HIGH"
+            else:  # REDUCED
+                is_open = "UNCERTAIN"
+                confidence = "MEDIUM"
+        elif poly_signal is not None:
+            if poly_signal == "OPEN":
+                is_open = "YES"
+                confidence = "MEDIUM"
+            elif poly_signal == "DISRUPTED":
+                is_open = "NO"
+                confidence = "MEDIUM"
+            else:
+                is_open = "UNCERTAIN"
+                confidence = "LOW"
+        elif risk_signal == "DISRUPTED":
+            # Only elevate to NO if CRITICAL risk and no other data
             is_open = "UNCERTAIN"
-            confidence = "MEDIUM"
-        elif len(signals) == 0 or all(s == "OPEN" for s in signals):
-            is_open = "YES"
-            confidence = "HIGH" if len(signals) >= 2 else "LOW"
+            confidence = "LOW"
         else:
             is_open = "UNCERTAIN"
             confidence = "LOW"

@@ -21,7 +21,7 @@ const SEV_STYLE = {
   LOW:      { color: "#22c55e", bg: "transparent" },
 };
 
-export function IntelFeed({ fullHeight = false, compact = false }) {
+export function IntelFeed({ fullHeight = false, compact = false, className = "" }) {
   const [events, setEvents] = useState([]);
   const [filter, setFilter] = useState("ALL");
   const esRef = useRef(null);
@@ -46,10 +46,8 @@ export function IntelFeed({ fullHeight = false, compact = false }) {
     ? events
     : events.filter((e) => e.severity === filter);
 
-  const height = fullHeight ? "calc(100vh - 320px)" : compact ? 160 : "100%";
-
   return (
-    <div className="panel overflow-hidden flex flex-col" style={{ height }}>
+    <div className={`panel overflow-hidden flex flex-col h-full ${className}`}>
       {/* Header row */}
       <div className="flex items-center gap-2 mb-2">
         <div className="panel-label mb-0">// Live Intelligence Feed</div>

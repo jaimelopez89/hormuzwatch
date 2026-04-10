@@ -16,70 +16,70 @@ import { useBrowserAlerts } from "./hooks/useBrowserAlerts";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+const TABS = [
+  { id: "map",   label: "LIVE MAP" },
+  { id: "intel", label: "INTEL FEED" },
+  { id: "data",  label: "DATA & CHARTS" },
+];
+
 export default function App() {
-  const vessels = useVesselStream();
+  const vessels  = useVesselStream();
   const briefing = useBriefingStream();
-  const market = useMarketStream();
+  const market   = useMarketStream();
   const [selectedVessel, setSelectedVessel] = useState(null);
   const [status, setStatus] = useState(null);
-  const [tab, setTab] = useState("map"); // "map" | "intel" | "data"
+  const [tab, setTab] = useState("map");
 
-  useBrowserAlerts(true); // request permission + fire notifications for CRITICAL events
+  useBrowserAlerts(true);
 
   useEffect(() => {
-    fetch(`${API}/api/status`).then(r => r.ok ? r.json() : null).then(d => d && setStatus(d)).catch(() => {});
-    const i = setInterval(() => {
+    const load = () =>
       fetch(`${API}/api/status`).then(r => r.ok ? r.json() : null).then(d => d && setStatus(d)).catch(() => {});
-    }, 15_000);
+    load();
+    const i = setInterval(load, 15_000);
     return () => clearInterval(i);
   }, []);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: "#030810" }}>
+    // Root: full-height flex column, nothing scrolls at this level
+    <div className="flex flex-col" style={{ height: "100dvh", background: "#030810", overflow: "hidden" }}>
       <Header />
       <ToastAlerts />
 
-      {/* Scrollable main content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      {/* Hero — fixed height so map below is predictable */}
+      <HeroStatus />
 
-        {/* Hero — IS HORMUZ OPEN? */}
-        <HeroStatus />
+      {/* Share row */}
+      <div className="flex items-center justify-end px-4 pb-1 shrink-0">
+        <ShareButton status={status} />
+      </div>
 
-        {/* Share button row */}
-        <div className="flex items-center justify-end px-4 pb-2">
-          <ShareButton status={status} />
-        </div>
+      {/* Tab bar — sticky */}
+      <div className="flex shrink-0 border-b" style={{ borderColor: "#0f2a40" }}>
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className="flex-1 font-mono text-xs py-2 tracking-widest transition-colors"
+            style={{
+              color: tab === t.id ? "#00d4ff" : "#4a5568",
+              borderBottom: tab === t.id ? "2px solid #00d4ff" : "2px solid transparent",
+              background: tab === t.id ? "#00d4ff06" : "transparent",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        {/* Navigation tabs for main views */}
-        <div
-          className="flex border-b sticky top-0 z-30"
-          style={{ borderColor: "#0f2a40", background: "#030810" }}
-        >
-          {[
-            { id: "map",   label: "LIVE MAP" },
-            { id: "intel", label: "INTEL FEED" },
-            { id: "data",  label: "DATA & MARKETS" },
-          ].map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className="flex-1 font-mono text-xs py-2.5 tracking-widest transition-colors"
-              style={{
-                color: tab === t.id ? "#00d4ff" : "#4a5568",
-                borderBottom: tab === t.id ? "2px solid #00d4ff" : "2px solid transparent",
-                background: tab === t.id ? "#00d4ff06" : "transparent",
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      {/* Main content — takes all remaining space */}
+      <div className="flex-1 overflow-hidden">
 
         {/* MAP TAB */}
         {tab === "map" && (
-          <div className="flex" style={{ height: "calc(100vh - 280px)", minHeight: 400 }}>
-            {/* Map */}
-            <div className="flex-1 relative">
+          <div className="flex h-full">
+            {/* Map fills left */}
+            <div className="flex-1 relative min-w-0">
               <Map vessels={vessels} onVesselClick={setSelectedVessel} />
               <VesselDetail vessel={selectedVessel} onClose={() => setSelectedVessel(null)} />
               {vessels.length > 0 && (
@@ -93,39 +93,36 @@ export default function App() {
             </div>
 
             {/* Right sidebar */}
-            <Sidebar briefing={briefing} market={market} />
+            <div className="flex flex-col shrink-0 overflow-hidden" style={{ width: 300, borderLeft: "1px solid #0f2a40", background: "#040b14" }}>
+              {/* Briefing + Market stacked, scrollable */}
+              <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
+                <Sidebar briefing={briefing} market={market} />
+              </div>
+              {/* Intel strip at bottom of sidebar */}
+              <div style={{ height: 200, borderTop: "1px solid #0f2a40", flexShrink: 0 }}>
+                <IntelFeed compact />
+              </div>
+            </div>
           </div>
         )}
 
         {/* INTEL TAB */}
         {tab === "intel" && (
-          <div className="p-3" style={{ minHeight: "calc(100vh - 280px)" }}>
+          <div className="h-full p-3">
             <IntelFeed fullHeight />
           </div>
         )}
 
         {/* DATA TAB */}
         {tab === "data" && (
-          <div className="flex flex-col gap-3 p-3">
+          <div className="h-full overflow-y-auto p-3 flex flex-col gap-3">
             <TransitChart />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <PolymarketWidget />
-              <Sidebar briefing={briefing} market={market} inline />
+              <div className="flex flex-col gap-3">
+                <Sidebar briefing={briefing} market={market} inline />
+              </div>
             </div>
-          </div>
-        )}
-
-        {/* Transit chart always visible in map view (below map) */}
-        {tab === "map" && (
-          <div className="p-3">
-            <TransitChart />
-          </div>
-        )}
-
-        {/* Bottom intel strip in map/data view */}
-        {tab !== "intel" && (
-          <div className="p-3 pt-0" style={{ height: 180 }}>
-            <IntelFeed compact />
           </div>
         )}
       </div>
