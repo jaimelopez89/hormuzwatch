@@ -76,7 +76,7 @@ export default function App() {
             </div>
 
             {/* Right sidebar */}
-            <div className="flex flex-col shrink-0 overflow-hidden" style={{ width: 300, borderLeft: "1px solid #0f2a40", background: "#040b14" }}>
+            <div className="flex flex-col shrink-0 overflow-hidden" style={{ width: 580, borderLeft: "1px solid #0f2a40", background: "#040b14" }}>
               {/* Briefing + Market stacked, scrollable */}
               <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
                 <Sidebar briefing={briefing} market={market} />

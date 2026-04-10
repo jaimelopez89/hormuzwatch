@@ -1,12 +1,12 @@
 """
 MarineTraffic tile scraper — Strait of Hormuz vessel positions.
 
-Uses Playwright to scrape MarineTraffic's internal map tile API, the same
-technique used by ishormuzopenyet. Returns 200-400 vessels covering the
-full Persian Gulf + Strait of Hormuz, including satellite-tracked vessels.
+Uses Playwright + playwright-stealth to scrape MarineTraffic's internal map tile
+API, the same technique used by ishormuzopenyet. Returns 200-400 vessels covering
+the full Persian Gulf + Strait of Hormuz, including satellite-tracked vessels.
 
 Setup (one-time):
-    pip install playwright
+    pip install playwright playwright-stealth
     playwright install chromium
 
 Polls every 10 minutes. Publishes to the same 'ais-positions' Kafka topic
@@ -42,9 +42,19 @@ MT_HOME = "https://www.marinetraffic.com/en/ais/home/centerx:56.3/centery:26.5/z
 
 async def fetch_tiles() -> list[dict]:
     from playwright.async_api import async_playwright
+    try:
+        from playwright_stealth import stealth_async
+        _has_stealth = True
+    except ImportError:
+        _has_stealth = False
+        log.warning("playwright-stealth not installed — MarineTraffic may return 403. "
+                    "Run: pip install playwright-stealth")
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
         context = await browser.new_context(
             user_agent=(
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -53,8 +63,15 @@ async def fetch_tiles() -> list[dict]:
             ),
             viewport={"width": 1920, "height": 1080},
             locale="en-US",
+            extra_http_headers={
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "application/json, text/plain, */*",
+                "Referer": "https://www.marinetraffic.com/",
+            },
         )
         page = await context.new_page()
+        if _has_stealth:
+            await stealth_async(page)
 
         # Visit the map first to pick up session cookies and pass bot detection
         try:

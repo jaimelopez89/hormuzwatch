@@ -23,14 +23,31 @@ KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 TOPIC = "market-ticks"
 POLL_INTERVAL = 5 * 60  # 5 minutes
 
-# Keywords to search for Hormuz/Iran war markets
+# Search terms covering Iran conflict + commodity/macro markets
 SEARCH_TERMS = [
-    "hormuz",
-    "iran",
-    "persian gulf",
-    "oil embargo",
-    "strait",
+    "hormuz", "iran", "persian gulf", "strait",
+    "oil price", "crude oil", "brent",
+    "inflation", "cpi", "recession", "fed rate",
+    "middle east", "nuclear",
 ]
+
+# Keyword filter — market must relate to Iran/commodities/inflation
+RELEVANT_KEYWORDS = [
+    "iran", "hormuz", "strait", "persian gulf", "middle east",
+    "oil", "crude", "brent", "wti", "opec", "energy", "gasoline",
+    "inflation", "cpi", "fed", "rate", "recession",
+    "war", "conflict", "attack", "nuclear", "sanctions",
+    "commodity", "commodities", "barrel",
+]
+
+
+def is_relevant(market: dict) -> bool:
+    text = (
+        market.get("title", "") + " " +
+        market.get("subtitle", "") + " " +
+        market.get("category", "")
+    ).lower()
+    return any(kw in text for kw in RELEVANT_KEYWORDS)
 
 
 def fetch_markets(term: str) -> list[dict]:
@@ -119,6 +136,8 @@ def run():
                         continue
                     seen_tickers.add(ticker)
 
+                    if not is_relevant(m):
+                        continue
                     parsed = parse_market(m)
                     if parsed:
                         producer.send(TOPIC, parsed)

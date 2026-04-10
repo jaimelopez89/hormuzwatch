@@ -156,8 +156,8 @@ async def run():
                                 producer.send(TOPIC, pos)
             except Exception as exc:
                 elapsed = asyncio.get_event_loop().time() - connect_time
-                if elapsed < 5:
-                    # Dropped before receiving any data — likely auth rejection or rate limit
+                if elapsed < 30:
+                    # Dropped before receiving any data — server rejection or rate limit
                     consecutive_fast_fails += 1
                     if consecutive_fast_fails >= 3:
                         log.error(

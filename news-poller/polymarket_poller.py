@@ -23,17 +23,27 @@ GAMMA_BASE = "https://gamma-api.polymarket.com"
 TOPIC = "market-ticks"
 POLL_INTERVAL = 5 * 60  # 5 minutes
 
-# Search terms to find active Hormuz/Iran war markets
+# Search terms covering Iran conflict + commodity/macro markets
 SEARCH_TERMS = [
-    "hormuz",
-    "strait of hormuz",
-    "iran strait",
-    "iran war",
-    "iran attack",
-    "oil embargo",
-    "persian gulf",
-    "iran nuclear",
+    "hormuz", "iran war", "iran attack", "iran nuclear",
+    "oil price", "crude oil", "brent", "wti",
+    "inflation", "cpi", "recession",
+    "persian gulf", "middle east war",
 ]
+
+# Keyword filter — market question must contain at least one of these to be included
+RELEVANT_KEYWORDS = [
+    "iran", "hormuz", "strait", "persian gulf", "middle east",
+    "oil", "crude", "brent", "wti", "opec", "energy",
+    "inflation", "cpi", "fed rate", "recession",
+    "war", "conflict", "attack", "nuclear", "sanctions",
+    "commodity", "commodities",
+]
+
+
+def is_relevant(market: dict) -> bool:
+    text = (market.get("question", "") + " " + market.get("description", "")).lower()
+    return any(kw in text for kw in RELEVANT_KEYWORDS)
 
 
 def fetch_hormuz_markets() -> list[dict]:
@@ -113,6 +123,8 @@ def run():
 
             sent = 0
             for m in markets:
+                if not is_relevant(m):
+                    continue
                 parsed = parse_market(m)
                 if parsed and parsed["price"] is not None:
                     producer.send(TOPIC, parsed)
