@@ -36,9 +36,20 @@ FEEDS = [
     ("ofac",       "https://home.treasury.gov/news/press-releases/rss"),
 
     # Tier 4 — Regional
-    ("iranintl",   "https://www.iranintl.com/en/rss"),
+    ("iranintl",      "https://www.iranintl.com/en/rss"),
     ("middleeasteye", "https://www.middleeasteye.net/rss"),
-    ("gulfnews",   "https://gulfnews.com/rss"),
+    ("gulfnews",      "https://gulfnews.com/rss"),
+    ("alarabiya",     "https://english.alarabiya.net/tools/rss.html"),
+    ("debkafile",     "https://www.debka.com/feed/"),
+
+    # Tier 5 — Shipping insurance / maritime security
+    ("ics-shipping",  "https://www.ics-shipping.org/rss"),
+    ("bimco",         "https://www.bimco.org/news/rss"),
+
+    # Tier 6 — OSINT / defence watchers
+    ("warontherocks", "https://warontherocks.com/feed/"),
+    ("bellingcat",    "https://www.bellingcat.com/feed/"),
+    ("rferl",         "https://www.rferl.org/api/zpkiqmoikreueukt"),  # RFE/RL Middle East
 ]
 
 KEYWORDS = [

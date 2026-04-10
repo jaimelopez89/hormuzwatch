@@ -87,6 +87,19 @@ export function Header() {
       {/* Divider */}
       <div className="w-px h-6 bg-border" />
 
+      {/* RSS link */}
+      <a
+        href={`${API}/rss`} target="_blank" rel="noopener noreferrer"
+        className="font-mono text-xs"
+        style={{ color: "#f97316", opacity: 0.7 }}
+        title="Subscribe to intelligence events via RSS"
+      >
+        RSS
+      </a>
+
+      {/* Divider */}
+      <div className="w-px h-6 bg-border" />
+
       {/* UTC clock */}
       <div className="font-mono text-xs text-dimtext tabular-nums">
         {time.toUTCString().slice(5, 25)} UTC

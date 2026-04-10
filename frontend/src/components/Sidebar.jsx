@@ -7,12 +7,22 @@ const TABS = [
   { id: "market",   label: "MARKET" },
 ];
 
-export function Sidebar({ briefing, market }) {
+export function Sidebar({ briefing, market, inline = false }) {
   const [active, setActive] = useState("briefing");
+
+  if (inline) {
+    // Inline mode — just show both stacked in a column, no tabs
+    return (
+      <div className="flex flex-col gap-3">
+        <BriefingPanel briefing={briefing} />
+        <MarketPanel market={market} />
+      </div>
+    );
+  }
 
   return (
     <div
-      className="w-80 flex flex-col border-l overflow-hidden"
+      className="w-80 flex flex-col border-l overflow-hidden shrink-0"
       style={{ borderColor: "#0f2a40", background: "#040b14" }}
     >
       {/* Tab bar */}

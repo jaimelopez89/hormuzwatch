@@ -5,42 +5,67 @@ from threading import Lock
 import time
 
 
+def _risk_level(score: int) -> str:
+    if score >= 80: return "CRITICAL"
+    if score >= 60: return "HIGH"
+    if score >= 40: return "ELEVATED"
+    return "LOW"
+
+
 @dataclass
 class AppState:
     vessels: dict = field(default_factory=dict)          # mmsi → position dict
     market: dict = field(default_factory=dict)           # symbol → tick dict
     briefing: dict | None = None
-    events: deque = field(default_factory=lambda: deque(maxlen=200))
+    events: deque = field(default_factory=lambda: deque(maxlen=500))
     risk_score: int = 5
     _risk_last_updated: float = field(default_factory=time.time)
     _lock: Lock = field(default_factory=Lock)
 
-    VESSEL_TTL = 6 * 3600          # 6 hours
-    RISK_DECAY_PER_HOUR = 5        # score decays 5 pts/hr toward baseline of 5
+    # IMF PortWatch data
+    portwatch: dict | None = None  # latest portwatch message with .days, .all_days, etc.
+
+    # Polymarket prediction markets (symbol → tick with yes_probability)
+    polymarkets: dict = field(default_factory=dict)
+
+    # Daily transit counter (our own vessel tracking)
+    daily_transits: dict = field(default_factory=dict)  # date → set of mmsis
+
+    VESSEL_TTL = 8 * 3600          # 8 hours — keep vessels longer for better coverage
+    RISK_DECAY_PER_HOUR = 3        # score decays 3 pts/hr toward baseline of 5
     RISK_BASELINE = 5
 
     def update_vessel(self, pos: dict):
         with self._lock:
             if pos.get("_static"):
-                # Merge static data into existing vessel record, don't overwrite position
+                # Merge static data into existing vessel record
                 mmsi = pos["mmsi"]
                 if mmsi in self.vessels:
-                    for field in ("name", "imo", "destination", "draught", "ship_type", "flag"):
-                        if pos.get(field):
-                            self.vessels[mmsi][field] = pos[field]
+                    for f in ("name", "imo", "destination", "draught", "ship_type", "flag"):
+                        if pos.get(f):
+                            self.vessels[mmsi][f] = pos[f]
                 else:
-                    # No position yet — store partial record for later merge
                     pos["_ts"] = time.time()
                     self.vessels[mmsi] = pos
             else:
                 mmsi = pos["mmsi"]
                 pos["_ts"] = time.time()
                 if mmsi in self.vessels:
-                    # Preserve enriched fields from static data
-                    for field in ("imo", "destination", "draught"):
-                        if self.vessels[mmsi].get(field) and not pos.get(field):
-                            pos[field] = self.vessels[mmsi][field]
+                    for f in ("imo", "destination", "draught"):
+                        if self.vessels[mmsi].get(f) and not pos.get(f):
+                            pos[f] = self.vessels[mmsi][f]
                 self.vessels[mmsi] = pos
+
+                # Count toward today's transit tally
+                today = time.strftime("%Y-%m-%d", time.gmtime())
+                if today not in self.daily_transits:
+                    self.daily_transits[today] = set()
+                self.daily_transits[today].add(mmsi)
+
+                # Prune old days (keep 30)
+                if len(self.daily_transits) > 30:
+                    oldest = sorted(self.daily_transits)[0]
+                    del self.daily_transits[oldest]
 
     def get_vessels(self, min_lat=None, max_lat=None, min_lon=None, max_lon=None) -> list:
         now = time.time()
@@ -61,9 +86,87 @@ class AppState:
             )
             return {"score": decayed, "level": _risk_level(decayed)}
 
+    def get_status(self) -> dict:
+        """
+        Unified 'Is Hormuz Open?' determination using multiple signals:
+        1. IMF PortWatch transit count vs 90-day baseline
+        2. Polymarket YES probability
+        3. Our own risk score
+        4. Active vessel count vs expected
+        """
+        risk = self.get_risk()
+
+        # PortWatch signal
+        pw_signal = None
+        pw_pct = None
+        if self.portwatch:
+            pw_pct = self.portwatch.get("pct_of_baseline", 0)
+            if pw_pct >= 85:   pw_signal = "OPEN"
+            elif pw_pct >= 50: pw_signal = "REDUCED"
+            else:              pw_signal = "DISRUPTED"
+
+        # Polymarket signal
+        poly_signal = None
+        poly_pct = None
+        poly_markets = [m for m in self.polymarkets.values() if m.get("yes_probability") is not None]
+        if poly_markets:
+            poly_pct = max(m["yes_probability"] for m in poly_markets)
+            if poly_pct >= 75:   poly_signal = "OPEN"
+            elif poly_pct >= 40: poly_signal = "UNCERTAIN"
+            else:                poly_signal = "DISRUPTED"
+
+        # Risk score signal (inverted — high risk = not open)
+        risk_signal = "OPEN"
+        if risk["level"] == "CRITICAL": risk_signal = "DISRUPTED"
+        elif risk["level"] == "HIGH":   risk_signal = "REDUCED"
+        elif risk["level"] == "ELEVATED": risk_signal = "UNCERTAIN"
+
+        # Consensus determination
+        signals = [s for s in [pw_signal, poly_signal, risk_signal] if s]
+        if "DISRUPTED" in signals:
+            is_open = "NO"
+            confidence = "HIGH" if signals.count("DISRUPTED") >= 2 else "MEDIUM"
+        elif "REDUCED" in signals and signals.count("OPEN") < 2:
+            is_open = "UNCERTAIN"
+            confidence = "MEDIUM"
+        elif len(signals) == 0 or all(s == "OPEN" for s in signals):
+            is_open = "YES"
+            confidence = "HIGH" if len(signals) >= 2 else "LOW"
+        else:
+            is_open = "UNCERTAIN"
+            confidence = "LOW"
+
+        with self._lock:
+            vessel_count = sum(
+                1 for v in self.vessels.values()
+                if time.time() - v.get("_ts", 0) < self.VESSEL_TTL
+            )
+            today = time.strftime("%Y-%m-%d", time.gmtime())
+            today_transits = len(self.daily_transits.get(today, set()))
+
+        return {
+            "is_open": is_open,
+            "confidence": confidence,
+            "risk_score": risk["score"],
+            "risk_level": risk["level"],
+            "portwatch_pct": pw_pct,
+            "portwatch_latest_date": self.portwatch.get("latest_date") if self.portwatch else None,
+            "polymarket_yes_pct": poly_pct,
+            "active_vessels": vessel_count,
+            "today_transits": today_transits,
+            "signals": {
+                "portwatch": pw_signal,
+                "polymarket": poly_signal,
+                "risk": risk_signal,
+            },
+        }
+
     def update_market(self, tick: dict):
         with self._lock:
-            self.market[tick["symbol"]] = tick
+            if tick.get("market_type") == "prediction":
+                self.polymarkets[tick["symbol"]] = tick
+            else:
+                self.market[tick["symbol"]] = tick
 
     def set_briefing(self, briefing: dict):
         with self._lock:
@@ -79,6 +182,10 @@ class AppState:
                 self.risk_score = min(100, self.risk_score + contribution)
                 self._risk_last_updated = time.time()
 
+    def set_portwatch(self, data: dict):
+        with self._lock:
+            self.portwatch = data
+
     def stats(self) -> dict:
         now = time.time()
         with self._lock:
@@ -88,16 +195,23 @@ class AppState:
                 if now - v.get("_ts", 0) < self.VESSEL_TTL
                 and 80 <= v.get("ship_type", 0) <= 89
             )
+            military = sum(
+                1 for v in self.vessels.values()
+                if now - v.get("_ts", 0) < self.VESSEL_TTL
+                and v.get("ship_type", 0) in (35, 36)
+            )
             critical = sum(1 for e in self.events if e.get("severity") == "CRITICAL")
             high = sum(1 for e in self.events if e.get("severity") == "HIGH")
-        return {"vessels": active, "tankers": tankers, "critical": critical, "high": high}
-
-
-def _risk_level(score: int) -> str:
-    if score >= 80: return "CRITICAL"
-    if score >= 60: return "HIGH"
-    if score >= 40: return "ELEVATED"
-    return "LOW"
+            today = time.strftime("%Y-%m-%d", time.gmtime())
+            today_transits = len(self.daily_transits.get(today, set()))
+        return {
+            "vessels": active,
+            "tankers": tankers,
+            "military": military,
+            "critical": critical,
+            "high": high,
+            "today_transits": today_transits,
+        }
 
 
 state = AppState()

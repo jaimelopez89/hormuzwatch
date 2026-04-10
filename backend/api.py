@@ -11,6 +11,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
 from kafka_utils import make_consumer, make_producer
@@ -73,6 +74,75 @@ def get_events(limit: int = 50):
     return list(state.events)[:limit]
 
 
+@app.get("/api/status")
+def get_status():
+    """Unified 'Is Hormuz Open?' determination from all signals."""
+    return state.get_status()
+
+
+@app.get("/api/portwatch")
+def get_portwatch():
+    """IMF PortWatch daily transit data (90 days + all 365 days)."""
+    return state.portwatch or {"error": "No PortWatch data yet"}
+
+
+@app.get("/api/polymarket")
+def get_polymarket():
+    """Polymarket prediction market odds for Hormuz markets."""
+    return list(state.polymarkets.values())
+
+
+@app.get("/api/polymarket/summary")
+def get_polymarket_summary():
+    """Best single YES probability across all active Hormuz markets."""
+    markets = [m for m in state.polymarkets.values() if m.get("yes_probability") is not None]
+    if not markets:
+        return {"yes_probability": None, "market": None}
+    best = max(markets, key=lambda m: m.get("yes_probability", 0))
+    return {"yes_probability": best["yes_probability"], "market": best}
+
+
+# ── Embed widget endpoint ───────────────────────────────────────────────────
+
+@app.get("/embed", response_class=HTMLResponse)
+async def embed_widget():
+    """Embeddable status badge — iframe this at width=300, height=100."""
+    status = state.get_status()
+    is_open = status["is_open"]
+    color = {"YES": "#22c55e", "NO": "#ef4444", "UNCERTAIN": "#f59e0b"}.get(is_open, "#64748b")
+    label = {"YES": "OPEN", "NO": "DISRUPTED", "UNCERTAIN": "UNCERTAIN"}.get(is_open, "UNKNOWN")
+    risk = status["risk_level"]
+    vessels = status["active_vessels"]
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: #030810; font-family: 'JetBrains Mono', monospace; overflow: hidden; }}
+  .badge {{ display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    border: 1px solid {color}44; border-radius: 8px;
+    box-shadow: 0 0 16px {color}22; width: 100%; }}
+  .open-label {{ font-size: 9px; letter-spacing: 2px; color: {color}; opacity: 0.7; }}
+  .open-val {{ font-size: 28px; font-weight: 700; color: {color}; }}
+  .right {{ color: #94a3b8; }}
+  .q {{ font-size: 9px; letter-spacing: 1px; color: {color}; font-weight: 700; }}
+  .sub {{ font-size: 10px; margin-top: 2px; }}
+  a {{ color: #00d4ff; text-decoration: none; font-size: 9px; }}
+</style></head>
+<body>
+<div class="badge">
+  <div>
+    <div class="open-label">IS HORMUZ OPEN?</div>
+    <div class="open-val">{label}</div>
+  </div>
+  <div class="right">
+    <div class="q">RISK: {risk}</div>
+    <div class="sub">{vessels} vessels tracked</div>
+    <div style="margin-top:4px"><a href="https://hormuzwatch.io" target="_blank">hormuzwatch.io ↗</a></div>
+  </div>
+</div>
+</body></html>"""
+
 
 # ── SSE endpoints ───────────────────────────────────────────────────────────
 
@@ -112,11 +182,59 @@ async def stream_events():
     return EventSourceResponse(gen())
 
 
+@app.get("/rss", response_class=Response)
+async def rss_feed():
+    """RSS feed of the latest intelligence events — subscribe in news readers."""
+    from feedgen.feed import FeedGenerator
+    from datetime import datetime, timezone
+
+    fg = FeedGenerator()
+    fg.id("https://hormuzwatch.io/rss")
+    fg.title("HormuzWatch Intelligence Feed — Strait of Hormuz")
+    fg.author({"name": "HormuzWatch", "email": "intel@hormuzwatch.io"})
+    fg.link(href="https://hormuzwatch.io", rel="alternate")
+    fg.link(href="https://hormuzwatch.io/rss", rel="self")
+    fg.description("Real-time intelligence events from the Strait of Hormuz")
+    fg.language("en")
+    fg.logo("https://hormuzwatch.io/favicon.ico")
+
+    events = list(state.events)[:50]
+    for ev in events:
+        fe = fg.add_entry()
+        eid = f"hormuzwatch-{ev.get('type','')}-{ev.get('mmsi','')}-{ev.get('timestamp','')}"
+        fe.id(eid)
+        fe.title(f"[{ev.get('severity','?')}] {ev.get('type','UNKNOWN').replace('_',' ')} — {ev.get('description','')[:80]}")
+        fe.description(ev.get("description", ""))
+        fe.link(href="https://hormuzwatch.io")
+        try:
+            ts = datetime.fromisoformat(ev["timestamp"].replace("Z", "+00:00")) if ev.get("timestamp") else datetime.now(timezone.utc)
+            fe.pubDate(ts)
+        except Exception:
+            fe.pubDate(datetime.now(timezone.utc))
+
+    rss = fg.rss_str(pretty=True)
+    return Response(content=rss, media_type="application/rss+xml")
+
+
+@app.get("/stream/status")
+async def stream_status():
+    """SSE for unified status — updates every 10 seconds."""
+    async def gen() -> AsyncIterator[dict]:
+        last = None
+        while True:
+            s = state.get_status()
+            if s != last:
+                last = s
+                yield {"data": json.dumps(s)}
+            await asyncio.sleep(10)
+    return EventSourceResponse(gen())
+
+
 # ── Kafka consumer background thread ───────────────────────────────────────
 
 def kafka_listener():
     consumer = make_consumer(
-        ["ais-positions", "intelligence-events", "briefings", "market-ticks"],
+        ["ais-positions", "intelligence-events", "briefings", "market-ticks", "portwatch-data"],
         "hormuzwatch-backend",
     )
     for msg in consumer:
@@ -129,6 +247,8 @@ def kafka_listener():
             state.set_briefing(value)
         elif topic == "market-ticks":
             state.update_market(value)
+        elif topic == "portwatch-data":
+            state.set_portwatch(value)
 
 
 if __name__ == "__main__":
