@@ -3,10 +3,8 @@ import asyncio
 import json
 import logging
 import os
-import ssl
 from datetime import datetime, timezone
 
-import certifi
 import websockets
 from dotenv import load_dotenv
 
@@ -133,14 +131,7 @@ async def run():
             connect_time = asyncio.get_event_loop().time()
             try:
                 log.info("Connecting to AISStream…")
-                ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-                async with websockets.connect(
-                    AIS_WS_URL, ssl=ssl_ctx,
-                    ping_interval=20,
-                    ping_timeout=30,
-                    close_timeout=10,
-                    open_timeout=15,
-                ) as ws:
+                async with websockets.connect(AIS_WS_URL) as ws:
                     await ws.send(subscribe_msg)
                     msgs_received = 0
                     async for raw_msg in ws:
