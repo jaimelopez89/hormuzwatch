@@ -64,8 +64,17 @@ def fetch_portwatch() -> list[dict]:
 
 def run():
     from kafka_utils import make_producer
-    producer = make_producer()
     log.info("PortWatch poller started.")
+
+    # Retry until Kafka is reachable — all services start simultaneously so
+    # the first connection attempt can race against broker readiness.
+    producer = None
+    while producer is None:
+        try:
+            producer = make_producer()
+        except Exception as e:
+            log.warning("Kafka connect failed (%s) — retrying in 30s", e)
+            time.sleep(30)
 
     while True:
         try:

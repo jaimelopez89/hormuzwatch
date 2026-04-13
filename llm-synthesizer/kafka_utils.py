@@ -46,7 +46,7 @@ def make_producer():
     )
 
 
-def make_consumer(topics, group_id):
+def make_consumer(topics, group_id, max_poll_interval_ms=300_000):
     return KafkaConsumer(
         *topics,
         bootstrap_servers=os.environ["KAFKA_BOOTSTRAP_SERVERS"].split(","),
@@ -55,4 +55,5 @@ def make_consumer(topics, group_id):
         group_id=group_id,
         auto_offset_reset="latest",
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+        max_poll_interval_ms=max_poll_interval_ms,
     )

@@ -87,7 +87,9 @@ class Synthesizer:
 
     def run(self):
         from kafka_utils import make_consumer
-        consumer = make_consumer([INPUT_TOPIC, MARKET_TOPIC, NEWS_TOPIC], "llm-synthesizer")
+        # 15-min interval — prevents rebalance during long Claude API calls
+        consumer = make_consumer([INPUT_TOPIC, MARKET_TOPIC, NEWS_TOPIC], "llm-synthesizer",
+                                 max_poll_interval_ms=900_000)
         log.info("LLM Synthesizer started.")
         last_score = self.risk_score
         for msg in consumer:
