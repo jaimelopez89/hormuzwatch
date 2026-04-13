@@ -24,6 +24,23 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
+# Support both playwright-stealth v1 (stealth_async) and v2 (Stealth().apply())
+_stealth_fn = None
+try:
+    from playwright_stealth import stealth_async as _stealth_fn  # v1 API
+except ImportError:
+    try:
+        from playwright_stealth import Stealth as _Stealth_cls
+
+        async def _stealth_fn(page):  # type: ignore[misc]
+            await _Stealth_cls().apply(page)
+    except Exception as _e:
+        log.warning(
+            "playwright-stealth unavailable (%s: %s) — MarineTraffic tiles may return 403. "
+            "Run: pip install playwright-stealth",
+            type(_e).__name__, _e,
+        )
+
 TOPIC = "ais-positions"
 POLL_INTERVAL = 10 * 60  # 10 minutes — be respectful of MT's servers
 
@@ -42,14 +59,6 @@ MT_HOME = "https://www.marinetraffic.com/en/ais/home/centerx:56.3/centery:26.5/z
 
 async def fetch_tiles() -> list[dict]:
     from playwright.async_api import async_playwright
-    try:
-        from playwright_stealth import stealth_async
-        _has_stealth = True
-    except Exception as _stealth_err:
-        _has_stealth = False
-        log.warning("playwright-stealth unavailable (%s: %s) — MarineTraffic may return 403. "
-                    "Run: pip install playwright-stealth",
-                    type(_stealth_err).__name__, _stealth_err)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -71,8 +80,8 @@ async def fetch_tiles() -> list[dict]:
             },
         )
         page = await context.new_page()
-        if _has_stealth:
-            await stealth_async(page)
+        if _stealth_fn is not None:
+            await _stealth_fn(page)
 
         # Visit the map first to pick up session cookies and clear Cloudflare.
         # Two failure modes:

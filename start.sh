@@ -70,6 +70,16 @@ echo "  /embed          — Embeddable widget"
 echo ""
 echo "Press Ctrl+C to stop all services."
 
-# Trap Ctrl+C to kill all children
-trap 'kill $(jobs -p) 2>/dev/null; exit' INT TERM
+# Clean shutdown: SIGTERM all children, wait 3s, then SIGKILL stragglers.
+# Using pkill -P $$ kills the direct children (and their children inherit
+# SIGTERM if they don't catch it); covers uvicorn workers and playwright/chromium.
+cleanup() {
+    echo ""
+    echo "Stopping all HormuzWatch services..."
+    pkill -TERM -P $$ 2>/dev/null
+    sleep 3
+    pkill -KILL -P $$ 2>/dev/null
+    exit 0
+}
+trap cleanup INT TERM
 wait

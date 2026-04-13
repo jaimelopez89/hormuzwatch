@@ -161,13 +161,22 @@ async def run():
                                 producer.send(TOPIC, pos)
             except Exception as exc:
                 elapsed = asyncio.get_event_loop().time() - connect_time
-                if elapsed < 30:
-                    # Dropped before receiving any data — server rejection or rate limit
+                exc_str = str(exc)
+                if "429" in exc_str or "too many requests" in exc_str.lower():
+                    # Explicit rate-limit — jump straight to max backoff
+                    consecutive_fast_fails += 1
+                    backoff = 3600
+                    log.error(
+                        "AISStream: HTTP 429 rate limit (attempt %d). "
+                        "Waiting 60 min — do not restart the process.",
+                        consecutive_fast_fails,
+                    )
+                elif elapsed < 30:
                     consecutive_fast_fails += 1
                     if consecutive_fast_fails >= 3:
                         log.error(
-                            "AISStream: %d consecutive fast disconnects — likely IP rate-limited "
-                            "from earlier reconnect storm. Waiting %ds. Will self-resolve.",
+                            "AISStream: %d consecutive fast disconnects — likely rate-limited. "
+                            "Waiting %ds. Do not restart.",
                             consecutive_fast_fails, backoff,
                         )
                     else:
@@ -176,7 +185,8 @@ async def run():
                     log.warning("AISStream disconnected after %ds: %s", int(elapsed), exc)
                 log.info("Reconnecting in %ds…", backoff)
                 await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 3600)  # cap at 1 hour — IP bans outlast 10 min
+                if "429" not in exc_str:
+                    backoff = min(backoff * 2, 3600)  # cap at 1 hour
     finally:
         try:
             producer.flush()
