@@ -8,6 +8,8 @@ import { VesselDetail } from "./components/VesselDetail";
 import { ToastAlerts } from "./components/ToastAlerts";
 import { TransitChart } from "./components/TransitChart";
 import { PolymarketWidget } from "./components/PolymarketWidget";
+import { HealthDashboard } from "./components/HealthDashboard";
+import { IncidentTimeline } from "./components/IncidentTimeline";
 import { useVesselStream } from "./hooks/useVesselStream";
 import { useBriefingStream } from "./hooks/useBriefingStream";
 import { useMarketStream } from "./hooks/useMarketStream";
@@ -61,18 +63,10 @@ export default function App() {
         {/* MAP TAB */}
         {tab === "map" && (
           <div className="flex h-full">
-            {/* Map fills left */}
+            {/* Map fills left — breakdown badge is rendered inside Map.jsx */}
             <div className="flex-1 relative min-w-0">
               <Map vessels={vessels} onVesselClick={setSelectedVessel} />
               <VesselDetail vessel={selectedVessel} onClose={() => setSelectedVessel(null)} />
-              {vessels.length > 0 && (
-                <div
-                  className="absolute top-3 left-3 font-mono text-xs px-2 py-1 rounded z-10"
-                  style={{ background: "#060d1888", border: "1px solid #0f2a40", color: "#00d4ff" }}
-                >
-                  {vessels.length} vessels in AOR
-                </div>
-              )}
             </div>
 
             {/* Right sidebar */}
@@ -102,9 +96,11 @@ export default function App() {
             <TransitChart />
             <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <PolymarketWidget />
-              <div className="flex flex-col gap-3">
-                <Sidebar briefing={briefing} market={market} inline />
-              </div>
+              <HealthDashboard />
+            </div>
+            <IncidentTimeline />
+            <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <Sidebar briefing={briefing} market={market} inline />
             </div>
           </div>
         )}

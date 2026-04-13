@@ -74,8 +74,17 @@ def _bootstrap_portwatch():
             "all_days": records,
         })
         log.info(f"PortWatch bootstrapped: {latest.get('date')} — {latest.get('n_total')} vessels ({pct}% of 90d avg {avg_90:.0f})")
+        state.touch_source("portwatch")
     except Exception as e:
         log.warning(f"PortWatch bootstrap failed (non-fatal): {e}")
+
+
+def _risk_history_recorder():
+    """Background thread — records risk snapshot every 5 minutes."""
+    import time as _time
+    while True:
+        _time.sleep(300)
+        state.record_risk_snapshot()
 
 
 @asynccontextmanager
@@ -83,9 +92,12 @@ async def lifespan(app: FastAPI):
     t = threading.Thread(target=kafka_listener, daemon=True)
     t.start()
     log.info("Kafka listener started.")
-    # Pre-populate PortWatch so status is immediately useful
     pw_thread = threading.Thread(target=_bootstrap_portwatch, daemon=True)
     pw_thread.start()
+    rh_thread = threading.Thread(target=_risk_history_recorder, daemon=True)
+    rh_thread.start()
+    # Seed first snapshot immediately
+    state.record_risk_snapshot()
     yield
 
 
@@ -149,6 +161,18 @@ def get_portwatch():
 def get_polymarket():
     """Polymarket prediction market odds for Hormuz markets."""
     return list(state.polymarkets.values())
+
+
+@app.get("/api/risk/history")
+def get_risk_history():
+    """24h risk score history for sparkline — one point per 5 minutes."""
+    return state.get_risk_history()
+
+
+@app.get("/health/details")
+def health_details():
+    """Per-source health status for ops dashboard."""
+    return state.get_health()
 
 
 @app.get("/api/polymarket/summary")
@@ -300,12 +324,16 @@ def kafka_listener():
         topic, value = msg.topic, msg.value
         if topic == "ais-positions":
             state.update_vessel(value)
+            state.touch_source(value.get("_source", "aisstream"))
         elif topic == "intelligence-events":
             state.add_event(value)
         elif topic == "briefings":
             state.set_briefing(value)
+            state.touch_source("synthesizer")
         elif topic == "market-ticks":
             state.update_market(value)
+            src = "prediction_mkts" if value.get("market_type") == "prediction" else "markets"
+            state.touch_source(src)
         elif topic == "portwatch-data":
             state.set_portwatch(value)
 

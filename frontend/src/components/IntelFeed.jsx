@@ -1,6 +1,16 @@
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useRef, useState } from "react";
 
+function shareEvent(ev) {
+  const text = `[HormuzWatch ${ev.severity}] ${ev.description}`;
+  const url  = window.location.origin;
+  if (navigator.share) {
+    navigator.share({ title: "HormuzWatch Alert", text, url }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(`${text}\n${url}`);
+  }
+}
+
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const TYPE_META = {
@@ -81,7 +91,7 @@ export function IntelFeed({ fullHeight = false, compact = false, className = "" 
             return (
               <div
                 key={i}
-                className="flex items-start gap-2 px-2 py-1 rounded"
+                className="flex items-start gap-2 px-2 py-1 rounded group"
                 style={{ background: sev.bg }}
               >
                 <span className="text-sm shrink-0 mt-0.5">{meta.icon}</span>
@@ -98,6 +108,12 @@ export function IntelFeed({ fullHeight = false, compact = false, className = "" 
                         ? formatDistanceToNow(new Date(ev.timestamp), { addSuffix: true })
                         : ""}
                     </span>
+                    <button
+                      onClick={() => shareEvent(ev)}
+                      title="Share this alert"
+                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ color: "#374151", fontSize: 10, lineHeight: 1, padding: "0 2px" }}
+                    >↗</button>
                   </div>
                   <p className="text-xs text-dimtext leading-snug truncate">{ev.description}</p>
                 </div>

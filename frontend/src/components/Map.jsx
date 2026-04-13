@@ -22,6 +22,17 @@ const SANCTIONED_MMSIS = new Set([
   352002785, 636091798,
 ]);
 
+const TRAIL_COLORS = {
+  tanker:     "#f9731666",
+  military:   "#ef444466",
+  cargo:      "#7c3aed66",
+  lng:        "#06b6d466",
+  sanctioned: "#ef444466",
+  other:      "#64748b44",
+};
+
+const MAX_TRAIL_POINTS = 12;
+
 function vesselCategory(shipType, mmsi) {
   if (SANCTIONED_MMSIS.has(parseInt(mmsi, 10))) return "sanctioned";
   if (shipType >= 80 && shipType <= 89) return "tanker";
@@ -41,81 +52,81 @@ function drawVesselIcon(color, glow = false) {
     ctx.shadowColor = color;
     ctx.shadowBlur = 10;
   }
-  // Ship silhouette — pointed bow at top
   const cx = size / 2, h = size;
   ctx.beginPath();
-  ctx.moveTo(cx, 2);          // bow
-  ctx.lineTo(cx + 5, h - 4);  // starboard stern
-  ctx.lineTo(cx, h - 7);      // stern notch
-  ctx.lineTo(cx - 5, h - 4);  // port stern
+  ctx.moveTo(cx, 2);
+  ctx.lineTo(cx + 5, h - 4);
+  ctx.lineTo(cx, h - 7);
+  ctx.lineTo(cx - 5, h - 4);
   ctx.closePath();
   ctx.fill();
   return canvas;
 }
 
+// Build trail GeoJSON from history map
+function buildTrailsGeoJSON(historyMap) {
+  const features = [];
+  for (const [mmsi, points] of Object.entries(historyMap)) {
+    if (points.length < 2) continue;
+    const cat = points[points.length - 1].category;
+    features.push({
+      type: "Feature",
+      geometry: {
+        type: "LineString",
+        coordinates: points.map(p => [p.lon, p.lat]),
+      },
+      properties: { mmsi, category: cat, color: TRAIL_COLORS[cat] || TRAIL_COLORS.other },
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
 export function Map({ vessels, onVesselClick }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
+  const trailHistoryRef = useRef({});  // mmsi → [{lat,lon,category}, ...]
 
   useEffect(() => {
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/dark-v11",
-      center: [56.3, 26.5],   // Strait of Hormuz
+      center: [56.3, 26.5],
       zoom: 7,
     });
     mapRef.current = map;
 
     map.on("load", () => {
-      // Tanker lane overlay
-      map.addSource("tanker-lanes", {
-        type: "geojson",
-        data: "/reference-data/geofences/tanker_lanes.geojson",
-      });
+      // Reference overlays
+      map.addSource("tanker-lanes", { type: "geojson", data: "/reference-data/geofences/tanker_lanes.geojson" });
+      map.addLayer({ id: "tanker-lanes", type: "line", source: "tanker-lanes",
+        paint: { "line-color": "#00d4ff", "line-width": 1.5, "line-opacity": 0.5, "line-dasharray": [6, 3] } });
+
+      map.addSource("anchorages", { type: "geojson", data: "/reference-data/geofences/anchorage_zones.geojson" });
+      map.addLayer({ id: "anchorages-fill", type: "fill", source: "anchorages",
+        paint: { "fill-color": "#f59e0b", "fill-opacity": 0.08 } });
+      map.addLayer({ id: "anchorages-line", type: "line", source: "anchorages",
+        paint: { "line-color": "#f59e0b", "line-width": 1, "line-opacity": 0.3, "line-dasharray": [3, 3] } });
+
+      map.addSource("hormuz-strait", { type: "geojson", data: "/reference-data/geofences/hormuz_strait.geojson" });
+      map.addLayer({ id: "hormuz-strait-fill", type: "fill", source: "hormuz-strait",
+        paint: { "fill-color": "#ef4444", "fill-opacity": 0.04 } });
+      map.addLayer({ id: "hormuz-strait-line", type: "line", source: "hormuz-strait",
+        paint: { "line-color": "#ef4444", "line-width": 1, "line-opacity": 0.25, "line-dasharray": [2, 4] } });
+
+      // Vessel trail source + layer (below vessel icons)
+      map.addSource("trails", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
-        id: "tanker-lanes",
+        id: "trails",
         type: "line",
-        source: "tanker-lanes",
-        paint: { "line-color": "#00d4ff", "line-width": 1.5, "line-opacity": 0.5, "line-dasharray": [6, 3] },
+        source: "trails",
+        paint: {
+          "line-color": ["get", "color"],
+          "line-width": 1.5,
+          "line-opacity": 0.6,
+        },
       });
 
-      // Anchorage zone overlay
-      map.addSource("anchorages", {
-        type: "geojson",
-        data: "/reference-data/geofences/anchorage_zones.geojson",
-      });
-      map.addLayer({
-        id: "anchorages-fill",
-        type: "fill",
-        source: "anchorages",
-        paint: { "fill-color": "#f59e0b", "fill-opacity": 0.08 },
-      });
-      map.addLayer({
-        id: "anchorages-line",
-        type: "line",
-        source: "anchorages",
-        paint: { "line-color": "#f59e0b", "line-width": 1, "line-opacity": 0.3, "line-dasharray": [3, 3] },
-      });
-
-      // Strait boundary overlay
-      map.addSource("hormuz-strait", {
-        type: "geojson",
-        data: "/reference-data/geofences/hormuz_strait.geojson",
-      });
-      map.addLayer({
-        id: "hormuz-strait-fill",
-        type: "fill",
-        source: "hormuz-strait",
-        paint: { "fill-color": "#ef4444", "fill-opacity": 0.04 },
-      });
-      map.addLayer({
-        id: "hormuz-strait-line",
-        type: "line",
-        source: "hormuz-strait",
-        paint: { "line-color": "#ef4444", "line-width": 1, "line-opacity": 0.25, "line-dasharray": [2, 4] },
-      });
-
-      // Register vessel icons (sanctioned gets glow effect)
+      // Vessel icons
       Object.entries(VESSEL_COLORS).forEach(([cat, color]) => {
         const glow = cat === "sanctioned" || cat === "military";
         const img = drawVesselIcon(color, glow);
@@ -126,7 +137,6 @@ export function Map({ vessels, onVesselClick }) {
         });
       });
 
-      // Vessel GeoJSON source (updated dynamically)
       map.addSource("vessels", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
         id: "vessels",
@@ -141,11 +151,9 @@ export function Map({ vessels, onVesselClick }) {
         },
       });
 
-      // Hover tooltip
       const popup = new mapboxgl.Popup({
         closeButton: false, closeOnClick: false,
-        className: "vessel-popup",
-        offset: 14,
+        className: "vessel-popup", offset: 14,
       });
 
       map.on("mouseenter", "vessels", (e) => {
@@ -176,28 +184,63 @@ export function Map({ vessels, onVesselClick }) {
     return () => map.remove();
   }, []);
 
-  // Update vessel source when vessels prop changes
+  // Update vessels + trails when vessels prop changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    const source = map.getSource("vessels");
-    if (!source) return;
-    source.setData({
-      type: "FeatureCollection",
-      features: vessels.map((v) => ({
+
+    const features = vessels.map((v) => {
+      const category = vesselCategory(v.shipType || v.ship_type || 0, v.mmsi);
+
+      // Update trail history
+      const key = String(v.mmsi);
+      if (!trailHistoryRef.current[key]) trailHistoryRef.current[key] = [];
+      const trail = trailHistoryRef.current[key];
+      const last = trail[trail.length - 1];
+      if (!last || last.lat !== v.lat || last.lon !== v.lon) {
+        trail.push({ lat: v.lat, lon: v.lon, category });
+        if (trail.length > MAX_TRAIL_POINTS) trail.shift();
+      }
+
+      return {
         type: "Feature",
         geometry: { type: "Point", coordinates: [v.lon, v.lat] },
         properties: {
           mmsi: v.mmsi, name: v.name, speed: v.speed,
-          heading: v.heading === 511 ? 0 : v.heading,
-          category: vesselCategory(v.shipType || 0, v.mmsi),
-          shipType: v.shipType, flag: v.flag,
-          course: v.course, navStatus: v.navStatus,
+          heading: v.heading === 511 ? 0 : (v.heading || 0),
+          category,
+          shipType: v.shipType || v.ship_type,
+          flag: v.flag, course: v.course,
+          navStatus: v.navStatus || v.nav_status,
           lat: v.lat, lon: v.lon,
         },
-      })),
+      };
     });
+
+    map.getSource("vessels")?.setData({ type: "FeatureCollection", features });
+    map.getSource("trails")?.setData(buildTrailsGeoJSON(trailHistoryRef.current));
   }, [vessels]);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  // Vessel type breakdown counts
+  const tankers  = vessels.filter(v => { const t = v.shipType || v.ship_type || 0; return t >= 80 && t <= 89; }).length;
+  const military = vessels.filter(v => { const t = v.shipType || v.ship_type || 0; return t === 35 || t === 36; }).length;
+  const cargo    = vessels.filter(v => { const t = v.shipType || v.ship_type || 0; return t >= 70 && t <= 79; }).length;
+
+  return (
+    <div ref={containerRef} className="w-full h-full relative">
+      {/* Vessel breakdown overlay */}
+      {vessels.length > 0 && (
+        <div
+          className="absolute top-3 left-3 z-10 flex gap-2 font-mono text-xs px-3 py-1.5 rounded"
+          style={{ background: "#060d18cc", border: "1px solid #0f2a40", backdropFilter: "blur(4px)" }}
+        >
+          <span style={{ color: "#00d4ff" }}>{vessels.length} vessels</span>
+          <span style={{ color: "#374151" }}>·</span>
+          <span style={{ color: "#f97316" }}>{tankers} tankers</span>
+          {military > 0 && <><span style={{ color: "#374151" }}>·</span><span style={{ color: "#ef4444" }}>{military} mil</span></>}
+          {cargo > 0 && <><span style={{ color: "#374151" }}>·</span><span style={{ color: "#7c3aed" }}>{cargo} cargo</span></>}
+        </div>
+      )}
+    </div>
+  );
 }

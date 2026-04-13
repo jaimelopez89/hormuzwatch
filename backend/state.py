@@ -28,6 +28,12 @@ class AppState:
     # Polymarket prediction markets (symbol → tick with yes_probability)
     polymarkets: dict = field(default_factory=dict)
 
+    # Risk score history — one snapshot every 5 min, 24h window
+    risk_history: deque = field(default_factory=lambda: deque(maxlen=288))
+
+    # Service health tracking
+    _source_last_seen: dict = field(default_factory=dict)  # source_name → timestamp
+
     # Daily transit counter (our own vessel tracking)
     daily_transits: dict = field(default_factory=dict)  # date → set of mmsis
 
@@ -157,6 +163,8 @@ class AppState:
             )
             today = time.strftime("%Y-%m-%d", time.gmtime())
             today_transits = len(self.daily_transits.get(today, set()))
+            brent = self.market.get("BZ=F") or self.market.get("BRENT") or {}
+            wti   = self.market.get("CL=F") or {}
 
         return {
             "is_open": is_open,
@@ -168,6 +176,10 @@ class AppState:
             "polymarket_yes_pct": poly_pct,
             "active_vessels": vessel_count,
             "today_transits": today_transits,
+            "brent_price": brent.get("price"),
+            "brent_change_pct": brent.get("change_pct"),
+            "wti_price": wti.get("price"),
+            "wti_change_pct": wti.get("change_pct"),
             "signals": {
                 "portwatch": pw_signal,
                 "polymarket": poly_signal,
@@ -199,6 +211,59 @@ class AppState:
     def set_portwatch(self, data: dict):
         with self._lock:
             self.portwatch = data
+
+    def touch_source(self, name: str):
+        """Record that a data source is alive."""
+        with self._lock:
+            self._source_last_seen[name] = time.time()
+
+    def get_health(self) -> dict:
+        """Return health status for each data source."""
+        now = time.time()
+        with self._lock:
+            seen = dict(self._source_last_seen)
+            vessel_count = sum(1 for v in self.vessels.values()
+                               if now - v.get("_ts", 0) < self.VESSEL_TTL)
+
+        def age(ts):
+            if ts is None:
+                return None
+            return round(now - ts)
+
+        def status(ts, warn_after, dead_after):
+            if ts is None:
+                return "unknown"
+            a = now - ts
+            if a > dead_after:
+                return "dead"
+            if a > warn_after:
+                return "stale"
+            return "ok"
+
+        return {
+            "aisstream":    {"status": status(seen.get("aisstream"),    120, 600),  "age_s": age(seen.get("aisstream"))},
+            "marinetraffic":{"status": status(seen.get("marinetraffic"),700, 1800), "age_s": age(seen.get("marinetraffic"))},
+            "portwatch":    {"status": status(seen.get("portwatch"),    25200, 86400), "age_s": age(seen.get("portwatch"))},
+            "news":         {"status": status(seen.get("news"),         3600, 7200),  "age_s": age(seen.get("news"))},
+            "markets":      {"status": status(seen.get("markets"),      600, 3600),   "age_s": age(seen.get("markets"))},
+            "prediction_mkts":{"status": status(seen.get("prediction_mkts"), 600, 3600), "age_s": age(seen.get("prediction_mkts"))},
+            "synthesizer":  {"status": status(seen.get("synthesizer"),  3600, 7200), "age_s": age(seen.get("synthesizer"))},
+            "vessels_live": vessel_count,
+        }
+
+    def record_risk_snapshot(self):
+        """Called every 5 min by background thread to build the risk history sparkline."""
+        risk = self.get_risk()
+        with self._lock:
+            self.risk_history.append({
+                "ts": round(time.time()),
+                "score": risk["score"],
+                "level": risk["level"],
+            })
+
+    def get_risk_history(self) -> list:
+        with self._lock:
+            return list(self.risk_history)
 
     def stats(self) -> dict:
         now = time.time()

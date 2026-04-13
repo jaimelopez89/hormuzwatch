@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -40,10 +41,37 @@ function Signal({ label, value, color, detail }) {
   );
 }
 
+function RiskSparkline({ data }) {
+  if (!data || data.length < 2) return null;
+  return (
+    <div style={{ width: 60, height: 28 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <Line
+            type="monotone"
+            dataKey="score"
+            stroke="#f59e0b"
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+          <Tooltip
+            contentStyle={{ background: "#060d18", border: "1px solid #0f2a40", borderRadius: 4, fontSize: 9, fontFamily: "monospace" }}
+            itemStyle={{ color: "#f59e0b" }}
+            labelFormatter={() => ""}
+            formatter={(v) => [`${v}/100`, "risk"]}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export function HeroStatus() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [blinkOn, setBlinkOn] = useState(true);
+  const [riskHistory, setRiskHistory] = useState([]);
   const esRef = useRef(null);
 
   useEffect(() => {
@@ -52,11 +80,27 @@ export function HeroStatus() {
       .then(d => { if (d) { setStatus(d); setLoading(false); } })
       .catch(() => setLoading(false));
 
+    fetch(`${API}/api/risk/history`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setRiskHistory(d))
+      .catch(() => {});
+
     function connect() {
       const es = new EventSource(`${API}/stream/status`);
       esRef.current = es;
       es.onmessage = (e) => {
-        try { const d = JSON.parse(e.data); setStatus(d); setLoading(false); } catch {}
+        try {
+          const d = JSON.parse(e.data);
+          setStatus(d);
+          setLoading(false);
+          // Append new risk point to sparkline
+          if (d.risk_score != null) {
+            setRiskHistory(prev => {
+              const next = [...prev, { ts: Date.now() / 1000, score: d.risk_score, level: d.risk_level }];
+              return next.slice(-288);
+            });
+          }
+        } catch {}
       };
       es.onerror = () => { es.close(); setTimeout(connect, 5000); };
     }
@@ -79,6 +123,16 @@ export function HeroStatus() {
 
   const riskColor = riskLevel === "CRITICAL" ? "#ef4444" : riskLevel === "HIGH" ? "#f97316" : riskLevel === "ELEVATED" ? "#f59e0b" : "#22c55e";
   const pwColor   = pwPct == null ? "#64748b" : pwPct >= 80 ? "#22c55e" : pwPct >= 45 ? "#f59e0b" : "#ef4444";
+
+  const brentPrice  = status?.brent_price;
+  const brentChange = status?.brent_change_pct;
+  const brentColor  = brentChange == null ? "#64748b" : brentChange > 2 ? "#ef4444" : brentChange > 0 ? "#f59e0b" : brentChange < -2 ? "#22c55e" : "#94a3b8";
+  const brentLabel  = brentPrice != null
+    ? `$${brentPrice.toFixed(1)}`
+    : null;
+  const brentDetail = brentChange != null
+    ? `${brentChange > 0 ? "+" : ""}${brentChange.toFixed(1)}% today`
+    : "Brent crude";
 
   return (
     <div
@@ -147,12 +201,20 @@ export function HeroStatus() {
             detail="Kalshi · Polymarket YES"
           />
         )}
-        <Signal
-          label="RISK INDEX"
-          value={`${riskScore}/100`}
-          color={riskColor}
-          detail={riskLevel}
-        />
+        {brentLabel != null && (
+          <Signal
+            label="BRENT CRUDE"
+            value={brentLabel}
+            color={brentColor}
+            detail={brentDetail}
+          />
+        )}
+        <div className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded"
+          style={{ background: "#ffffff06", border: "1px solid #ffffff0a", minWidth: 80 }}>
+          <div className="font-mono tracking-wider" style={{ color: "#64748b", fontSize: 8 }}>RISK INDEX</div>
+          <div className="font-mono font-bold leading-none" style={{ color: riskColor, fontSize: 13 }}>{riskScore}/100</div>
+          <RiskSparkline data={riskHistory} />
+        </div>
       </div>
     </div>
   );

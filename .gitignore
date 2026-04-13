@@ -2,6 +2,8 @@
 .env
 *.env.local
 certs/
+flink-jobs/src/main/resources/aiven-service.cert
+flink-jobs/src/main/resources/aiven-service.key
 
 # Python
 *.pyc
@@ -16,6 +18,9 @@ dist/
 *.jar
 flink-jobs/target/
 flink-jobs/dependency-reduced-pom.xml
+
+# Deployment configs with embedded credentials
+deploy/ververica-deployment.yaml
 
 # macOS
 .DS_Store
