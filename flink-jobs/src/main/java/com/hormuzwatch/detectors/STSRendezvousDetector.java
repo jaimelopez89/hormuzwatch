@@ -98,13 +98,16 @@ public class STSRendezvousDetector extends KeyedProcessFunction<String, VesselPo
     public void onTimer(long timestamp, OnTimerContext ctx,
                         Collector<IntelligenceEvent> out) throws Exception {
         long cutoff = timestamp - 10 * 60 * 1000L;
+        // Collect stale keys first — cannot remove while iterating MapState
+        java.util.List<Long> toRemove = new java.util.ArrayList<>();
         for (java.util.Map.Entry<Long, VesselPosition> entry : nearbyVessels.entries()) {
             try {
                 long lastSeen = java.time.Instant.parse(entry.getValue().timestamp)
                     .toEpochMilli();
-                if (lastSeen < cutoff) nearbyVessels.remove(entry.getKey());
+                if (lastSeen < cutoff) toRemove.add(entry.getKey());
             } catch (Exception ignored) {}
         }
+        for (Long key : toRemove) nearbyVessels.remove(key);
     }
 
     public static boolean isSanctioned(long mmsi) {

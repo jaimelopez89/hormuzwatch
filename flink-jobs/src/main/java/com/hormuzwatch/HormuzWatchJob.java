@@ -50,6 +50,7 @@ public class HormuzWatchJob {
             .process(new TrafficVolumeDetector());
 
         DataStream<IntelligenceEvent> military = positions
+            .keyBy(p -> p.mmsi)
             .process(new MilitaryProximityDetector());
 
         DataStream<IntelligenceEvent> slowdowns = positions
