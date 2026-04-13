@@ -73,10 +73,17 @@ async def fetch_tiles() -> list[dict]:
         if _has_stealth:
             await stealth_async(page)
 
-        # Visit the map first to pick up session cookies and pass bot detection
+        # Visit the map first to pick up session cookies and clear Cloudflare.
+        # Cloudflare's JS challenge page has title "Just a moment..." — poll until
+        # it resolves (usually within 5s) before fetching tile data.
         try:
-            await page.goto(MT_HOME, wait_until="networkidle", timeout=30_000)
-            await asyncio.sleep(3)
+            await page.goto(MT_HOME, wait_until="domcontentloaded", timeout=30_000)
+            for _ in range(20):
+                title = await page.title()
+                if "just a moment" not in title.lower():
+                    break
+                await asyncio.sleep(1)
+            await asyncio.sleep(2)  # let cookies settle
         except Exception as e:
             log.debug("MT home page visit failed (non-fatal): %s", e)
 

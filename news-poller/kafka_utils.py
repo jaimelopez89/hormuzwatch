@@ -26,12 +26,16 @@ def _ssl_context():
         raise RuntimeError(f"Kafka CA cert not found at {ca_path!r}. Check KAFKA_CA_CERT_PATH in your .env")
     ctx = ssl.create_default_context()
     ctx.load_verify_locations(ca_path)
-    # Aiven requires mutual TLS — load client cert + key
-    cert_path = _resolve(os.environ.get("KAFKA_SSL_CERT_PATH", ""))
-    key_path = _resolve(os.environ.get("KAFKA_SSL_KEY_PATH", ""))
-    if cert_path and key_path:
-        ctx.load_cert_chain(certfile=cert_path, keyfile=key_path)
+    # Aiven requires mutual TLS — resolve paths only when env vars are set
+    cert_env = os.environ.get("KAFKA_SSL_CERT_PATH", "")
+    key_env = os.environ.get("KAFKA_SSL_KEY_PATH", "")
+    if cert_env and key_env:
+        ctx.load_cert_chain(certfile=_resolve(cert_env), keyfile=_resolve(key_env))
     return ctx
+
+
+# Aiven brokers close idle connections after ~10 min; stay under that threshold.
+_IDLE_MS = 9 * 60 * 1000
 
 
 def make_producer():
@@ -43,10 +47,11 @@ def make_producer():
         compression_type="gzip",
         linger_ms=100,
         batch_size=16384,
+        connections_max_idle_ms=_IDLE_MS,
     )
 
 
-def make_consumer(topics, group_id):
+def make_consumer(topics, group_id, max_poll_interval_ms=300_000):
     return KafkaConsumer(
         *topics,
         bootstrap_servers=os.environ["KAFKA_BOOTSTRAP_SERVERS"].split(","),
@@ -55,4 +60,6 @@ def make_consumer(topics, group_id):
         group_id=group_id,
         auto_offset_reset="latest",
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+        connections_max_idle_ms=_IDLE_MS,
+        max_poll_interval_ms=max_poll_interval_ms,
     )
