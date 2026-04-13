@@ -84,7 +84,7 @@ export function IncidentTimeline() {
                   ? formatDistanceToNow(new Date(ev.timestamp), { addSuffix: true })
                   : "";
                 const timeStr = ev.timestamp
-                  ? format(new Date(ev.timestamp), "HH:mm UTC")
+                  ? format(new Date(ev.timestamp), "HH:mm 'UTC'")
                   : "";
 
                 return (

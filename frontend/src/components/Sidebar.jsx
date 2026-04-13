@@ -22,8 +22,8 @@ export function Sidebar({ briefing, market, inline = false }) {
 
   return (
     <div
-      className="w-80 flex flex-col border-l overflow-hidden shrink-0"
-      style={{ borderColor: "#0f2a40", background: "#040b14" }}
+      className="w-full flex flex-col overflow-hidden"
+      style={{ background: "#040b14" }}
     >
       {/* Tab bar */}
       <div className="flex border-b shrink-0" style={{ borderColor: "#0f2a40" }}>

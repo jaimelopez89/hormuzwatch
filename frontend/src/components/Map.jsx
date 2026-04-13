@@ -226,6 +226,15 @@ export function Map({ vessels, onVesselClick }) {
   const military = vessels.filter(v => { const t = v.shipType || v.ship_type || 0; return t === 35 || t === 36; }).length;
   const cargo    = vessels.filter(v => { const t = v.shipType || v.ship_type || 0; return t >= 70 && t <= 79; }).length;
 
+  const LEGEND = [
+    { label: "Tanker",     color: VESSEL_COLORS.tanker },
+    { label: "Military",   color: VESSEL_COLORS.military },
+    { label: "Cargo",      color: VESSEL_COLORS.cargo },
+    { label: "LNG",        color: VESSEL_COLORS.lng },
+    { label: "Sanctioned", color: VESSEL_COLORS.sanctioned, glow: true },
+    { label: "Other",      color: VESSEL_COLORS.other },
+  ];
+
   return (
     <div ref={containerRef} className="w-full h-full relative">
       {/* Vessel breakdown overlay */}
@@ -241,6 +250,27 @@ export function Map({ vessels, onVesselClick }) {
           {cargo > 0 && <><span style={{ color: "#374151" }}>·</span><span style={{ color: "#7c3aed" }}>{cargo} cargo</span></>}
         </div>
       )}
+
+      {/* Vessel type legend */}
+      <div
+        className="absolute bottom-8 left-3 z-10 font-mono"
+        style={{ background: "#060d18cc", border: "1px solid #0f2a40", backdropFilter: "blur(4px)", borderRadius: 4, padding: "6px 10px" }}
+      >
+        <div style={{ color: "#374151", fontSize: 8, letterSpacing: "0.12em", marginBottom: 4 }}>VESSEL TYPE</div>
+        {LEGEND.map(({ label, color, glow }) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+            <span style={{
+              width: 7, height: 7,
+              background: color,
+              borderRadius: "50%",
+              display: "inline-block",
+              flexShrink: 0,
+              boxShadow: glow ? `0 0 4px ${color}` : "none",
+            }} />
+            <span style={{ color: "#94a3b8", fontSize: 9 }}>{label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
