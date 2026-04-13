@@ -24,16 +24,27 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# Support both playwright-stealth v1 (stealth_async) and v2 (Stealth().apply())
+# Support playwright-stealth v1 (stealth_async) and v2 (Stealth class).
+# v2 renamed/removed stealth_async; probe available methods at import time.
 _stealth_fn = None
 try:
-    from playwright_stealth import stealth_async as _stealth_fn  # v1 API
+    from playwright_stealth import stealth_async as _stealth_fn  # v1
 except ImportError:
     try:
         from playwright_stealth import Stealth as _Stealth_cls
 
         async def _stealth_fn(page):  # type: ignore[misc]
-            await _Stealth_cls().apply(page)
+            s = _Stealth_cls()
+            # v2 method names differ by minor version — try in priority order
+            for _method in ("apply_stealth_async", "apply"):
+                _fn = getattr(s, _method, None)
+                if _fn is not None:
+                    await _fn(page)
+                    return
+            # Fallback: some versions make the instance directly callable
+            _coro = s(page)
+            if asyncio.iscoroutine(_coro):
+                await _coro
     except Exception as _e:
         log.warning(
             "playwright-stealth unavailable (%s: %s) — MarineTraffic tiles may return 403. "

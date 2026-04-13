@@ -59,13 +59,23 @@ _crumb: str | None = None
 
 
 def _init_yahoo() -> str:
-    """Initialise Yahoo Finance session cookies and return a fresh crumb token."""
+    """Initialise Yahoo Finance session cookies and return a fresh crumb token.
+
+    Yahoo Finance rate-limits /v1/test/getcrumb — retry with backoff.
+    """
     _session.get("https://finance.yahoo.com", timeout=10)
-    resp = _session.get(
-        "https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=10
-    )
-    resp.raise_for_status()
-    return resp.text.strip()
+    for attempt in range(4):
+        resp = _session.get(
+            "https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=10
+        )
+        if resp.status_code == 429:
+            wait = 10 * (attempt + 1)
+            log.warning("Yahoo Finance getcrumb rate-limited — retrying in %ds", wait)
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return resp.text.strip()
+    raise RuntimeError("Yahoo Finance getcrumb failed after retries")
 
 
 def fetch_prices(symbols: list[str]) -> dict[str, float]:

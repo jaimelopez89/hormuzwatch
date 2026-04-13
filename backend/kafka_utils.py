@@ -4,10 +4,9 @@ import os
 import ssl
 from kafka import KafkaProducer, KafkaConsumer
 
-# Suppress kafka-python's noisy connection debug logs — node flapping is non-critical
-logging.getLogger("kafka.conn").setLevel(logging.WARNING)
-logging.getLogger("kafka.client").setLevel(logging.WARNING)
-logging.getLogger("kafka.cluster").setLevel(logging.WARNING)
+# Silence all kafka-python loggers — coordinator/consumer rebalance chatter
+# at INFO is not actionable; real errors still surface at WARNING+
+logging.getLogger("kafka").setLevel(logging.WARNING)
 
 # kafka_utils.py lives one level inside the project root (ingestion/, backend/, etc.)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

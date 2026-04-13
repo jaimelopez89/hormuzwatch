@@ -12,6 +12,18 @@ set -a && source "$DIR/.env" && set +a
 # Use python3 explicitly
 PY=$(command -v python3 || command -v python)
 
+# ── Kill stale processes from any previous run ──────────────────────────────
+# Multiple consumer instances in the same Kafka group cause endless
+# rebalancing and empty partition assignments. Always start clean.
+for pat in ais_connector marinetraffic_scraper aishub_poller \
+           news_poller market_poller portwatch_poller \
+           polymarket_poller kalshi_poller synthesizer; do
+    pkill -f "python.*${pat}" 2>/dev/null || true
+done
+pkill -f "uvicorn.*api:app" 2>/dev/null || true
+sleep 1
+# ────────────────────────────────────────────────────────────────────────────
+
 # AIS Connector (real-time WebSocket)
 (cd "$DIR/ingestion" && $PY ais_connector.py) &
 echo "✓ AIS Connector (PID $!)"
@@ -71,14 +83,13 @@ echo ""
 echo "Press Ctrl+C to stop all services."
 
 # Clean shutdown: SIGTERM all children, wait 3s, then SIGKILL stragglers.
-# Using pkill -P $$ kills the direct children (and their children inherit
-# SIGTERM if they don't catch it); covers uvicorn workers and playwright/chromium.
+# pkill -P $$ covers grandchildren (uvicorn workers, playwright/chromium).
 cleanup() {
     echo ""
     echo "Stopping all HormuzWatch services..."
-    pkill -TERM -P $$ 2>/dev/null
+    pkill -TERM -P $$ 2>/dev/null || true
     sleep 3
-    pkill -KILL -P $$ 2>/dev/null
+    pkill -KILL -P $$ 2>/dev/null || true
     exit 0
 }
 trap cleanup INT TERM
