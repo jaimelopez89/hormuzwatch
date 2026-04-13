@@ -12,9 +12,9 @@ from kafka import KafkaProducer, KafkaConsumer
 logging.getLogger("kafka").setLevel(logging.WARNING)
 logging.getLogger("kafka.conn").setLevel(logging.CRITICAL)
 
-# Aiven brokers close idle connections after ~10 min; close client-side at 2 min
-# so kafka-python never receives an unexpected FIN from the broker.
-_IDLE_MS = 2 * 60 * 1000
+# Aiven brokers close idle connections after ~10 min; close client-side at 9 min
+# to stay under that limit while satisfying connections_max_idle_ms > request_timeout_ms (305s).
+_IDLE_MS = 9 * 60 * 1000
 
 # kafka_utils.py lives one level inside the project root (ingestion/, backend/, etc.)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

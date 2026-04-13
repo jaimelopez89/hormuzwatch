@@ -14,9 +14,9 @@ logging.getLogger("kafka.conn").setLevel(logging.CRITICAL)
 # kafka_utils.py lives one level inside the project root (ingestion/, backend/, etc.)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Close idle connections client-side at 2 min so kafka-python never receives an
-# unexpected FIN from the broker (Aiven closes idle connections after ~10 min).
-_IDLE_MS = 2 * 60 * 1000
+# Close idle connections client-side at 9 min (must be > request_timeout_ms 305s);
+# stays under Aiven's ~10 min broker-side idle kill.
+_IDLE_MS = 9 * 60 * 1000
 
 
 def _resolve(path: str) -> str:
