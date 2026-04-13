@@ -4,9 +4,17 @@ import os
 import ssl
 from kafka import KafkaProducer, KafkaConsumer
 
-# Silence all kafka-python loggers — coordinator/consumer rebalance chatter
-# at INFO is not actionable; real errors still surface at WARNING+
+# Silence kafka-python loggers.
+# kafka.conn logs a spurious ERROR ("Socket EVENT_READ without in-flight-requests")
+# whenever the broker closes an idle TCP connection — it's a known kafka-python 2.0.2
+# bug; the client recovers automatically. Raise that logger to CRITICAL so it's hidden.
+# All other kafka namespaces go to WARNING so real problems still surface.
 logging.getLogger("kafka").setLevel(logging.WARNING)
+logging.getLogger("kafka.conn").setLevel(logging.CRITICAL)
+
+# Aiven brokers close idle connections after ~10 min; close client-side at 2 min
+# so kafka-python never receives an unexpected FIN from the broker.
+_IDLE_MS = 2 * 60 * 1000
 
 # kafka_utils.py lives one level inside the project root (ingestion/, backend/, etc.)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -33,8 +41,6 @@ def _ssl_context():
     return ctx
 
 
-# Aiven brokers close idle connections after ~10 min; stay under that threshold.
-_IDLE_MS = 9 * 60 * 1000
 
 
 def make_producer():
