@@ -176,10 +176,13 @@ async def run():
                     log.warning("AISStream disconnected after %ds: %s", int(elapsed), exc)
                 log.info("Reconnecting in %ds…", backoff)
                 await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 600)  # cap at 10 min between retries
+                backoff = min(backoff * 2, 3600)  # cap at 1 hour — IP bans outlast 10 min
     finally:
-        producer.flush()
-        producer.close()
+        try:
+            producer.flush()
+            producer.close()
+        except Exception as e:
+            log.warning("Producer cleanup error (non-fatal): %s", e)
 
 
 if __name__ == "__main__":

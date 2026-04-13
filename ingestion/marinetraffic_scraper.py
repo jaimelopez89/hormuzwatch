@@ -45,10 +45,11 @@ async def fetch_tiles() -> list[dict]:
     try:
         from playwright_stealth import stealth_async
         _has_stealth = True
-    except ImportError:
+    except Exception as _stealth_err:
         _has_stealth = False
-        log.warning("playwright-stealth not installed — MarineTraffic may return 403. "
-                    "Run: pip install playwright-stealth")
+        log.warning("playwright-stealth unavailable (%s: %s) — MarineTraffic may return 403. "
+                    "Run: pip install playwright-stealth",
+                    type(_stealth_err).__name__, _stealth_err)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -74,16 +75,27 @@ async def fetch_tiles() -> list[dict]:
             await stealth_async(page)
 
         # Visit the map first to pick up session cookies and clear Cloudflare.
-        # Cloudflare's JS challenge page has title "Just a moment..." — poll until
-        # it resolves (usually within 5s) before fetching tile data.
+        # Two failure modes:
+        #   1. Hard 403 — IP/Cloudflare blocked outright; no point fetching tiles.
+        #   2. JS challenge ("Just a moment...") — wait up to 20s for it to resolve.
+        home_ok = False
         try:
-            await page.goto(MT_HOME, wait_until="domcontentloaded", timeout=30_000)
+            resp = await page.goto(MT_HOME, wait_until="domcontentloaded", timeout=30_000)
+            if resp and resp.status == 403:
+                log.warning("MarineTraffic home returned 403 — IP is Cloudflare-blocked; "
+                            "skipping tile fetch. Will retry next poll cycle.")
+                await browser.close()
+                return []
             for _ in range(20):
                 title = await page.title()
                 if "just a moment" not in title.lower():
+                    home_ok = True
                     break
                 await asyncio.sleep(1)
-            await asyncio.sleep(2)  # let cookies settle
+            else:
+                log.warning("Cloudflare JS challenge did not resolve — tiles will likely 403")
+            if home_ok:
+                await asyncio.sleep(2)  # let cookies settle
         except Exception as e:
             log.debug("MT home page visit failed (non-fatal): %s", e)
 
