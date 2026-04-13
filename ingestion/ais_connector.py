@@ -141,10 +141,15 @@ async def run():
                             continue
                         msgs_received += 1
                         if msgs_received == 1:
-                            # First message — connection is healthy, reset backoff
-                            backoff = 2
-                            consecutive_fast_fails = 0
                             log.info("AISStream connected and receiving data.")
+                        elif msgs_received == 50:
+                            # 50 messages ≈ 1–2 min of real data — connection is genuinely
+                            # stable; resetting on msg 1 caused a fresh reconnect storm
+                            # after each rate-limit window because AISStream would accept
+                            # the socket just long enough to send one frame.
+                            backoff = 30
+                            consecutive_fast_fails = 0
+                            log.info("AISStream: connection stable — backoff reset.")
                         msg_type = msg.get("MessageType", "")
                         if msg_type in ("ShipStaticAndVoyageRelatedData", "StaticDataReport"):
                             static = parse_static(msg)
