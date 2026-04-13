@@ -16,6 +16,8 @@ import org.apache.flink.streaming.api.windowing.assigners.SlidingProcessingTimeW
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.GlobalConfiguration;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Properties;
 
 public class HormuzWatchJob {
@@ -38,7 +40,15 @@ public class HormuzWatchJob {
             .map(s -> {
                 try { return mapper.readValue(s, NewsEvent.class); }
                 catch (Exception e) { throw new RuntimeException(e); }
-            });
+            })
+            // intervalJoin requires event-time timestamps; extract from published_at with 2-min slack
+            .assignTimestampsAndWatermarks(
+                WatermarkStrategy.<NewsEvent>forBoundedOutOfOrderness(Duration.ofMinutes(2))
+                    .withTimestampAssigner((event, ts) -> {
+                        try { return Instant.parse(event.publishedAt).toEpochMilli(); }
+                        catch (Exception ex) { return Instant.now().toEpochMilli(); }
+                    })
+            );
 
         // --- Detectors ---
         DataStream<IntelligenceEvent> dark = positions
@@ -74,9 +84,18 @@ public class HormuzWatchJob {
             .keyBy(p -> p.mmsi)
             .process(new SanctionsHitDetector());
 
-        // Merge all AIS intelligence events
+        // Merge all AIS intelligence events, then assign event-time timestamps so
+        // the interval join can compute its ±5-min window (all detectors set
+        // event.timestamp = Instant.now().toString(), so this is always valid)
         DataStream<IntelligenceEvent> allAisEvents =
-            dark.union(traffic, military, slowdowns, clusters, sts, sanctions);
+            dark.union(traffic, military, slowdowns, clusters, sts, sanctions)
+            .assignTimestampsAndWatermarks(
+                WatermarkStrategy.<IntelligenceEvent>forBoundedOutOfOrderness(Duration.ofSeconds(30))
+                    .withTimestampAssigner((event, ts) -> {
+                        try { return Instant.parse(event.timestamp).toEpochMilli(); }
+                        catch (Exception ex) { return Instant.now().toEpochMilli(); }
+                    })
+            );
 
         // News x AIS correlation (10-min interval join)
         DataStream<IntelligenceEvent> correlations = news
