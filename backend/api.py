@@ -9,11 +9,12 @@ from typing import AsyncIterator
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
+import replay as _replay
 from kafka_utils import make_consumer, make_producer
 from state import state
 
@@ -185,6 +186,125 @@ def get_polymarket_summary():
     return {"yes_probability": best["yes_probability"], "market": best}
 
 
+@app.get("/api/heatmap")
+def get_heatmap():
+    return state.get_heatmap()
+
+
+@app.get("/api/predictions")
+def get_predictions():
+    return state.get_predictions()
+
+
+@app.get("/api/fleet-graph")
+def get_fleet_graph():
+    return state.get_fleet_graph()
+
+
+@app.get("/api/throughput")
+def get_throughput():
+    return state.get_throughput()
+
+
+@app.get("/api/geofences")
+def get_geofences():
+    return state.get_geofences()
+
+
+@app.post("/api/geofences")
+async def publish_geofence(request: Request):
+    """Publish a geofence definition to Kafka so Flink picks it up dynamically."""
+    gf = await request.json()
+    try:
+        from kafka_utils import make_producer
+        producer = make_producer()
+        producer.send("geofence-control", gf)
+        producer.flush()
+        producer.close()
+    except Exception:
+        pass  # continue even if Kafka unavailable
+    state.set_geofence(gf)
+    return {"status": "published", "id": gf.get("id")}
+
+
+@app.delete("/api/geofences/{gf_id}")
+async def delete_geofence(gf_id: str):
+    try:
+        from kafka_utils import make_producer
+        producer = make_producer()
+        producer.send("geofence-control", {"id": gf_id, "active": False})
+        producer.flush()
+        producer.close()
+    except Exception:
+        pass
+    state.set_geofence({"id": gf_id, "active": False})
+    return {"status": "deleted", "id": gf_id}
+
+
+@app.get("/api/telemetry")
+def get_telemetry():
+    import time as _t
+    now = _t.time()
+    with state._lock:
+        ev_count = len(state.events)
+        vessel_count = len(state.vessels)
+        sources = dict(state._source_last_seen)
+        heatmap_cells = len(state.heatmap)
+        fleet_edges = len(state.fleet_graph)
+        predictions_count = len(state.predictions)
+
+    def age(name):
+        ts = sources.get(name)
+        return round(now - ts) if ts else None
+
+    return {
+        "vessel_count": vessel_count,
+        "intel_events_per_min": ev_count,
+        "ais_messages_per_sec": None,
+        "avg_synthesis_latency_ms": None,
+        "active_topics": 8,
+        "heatmap_cells": heatmap_cells,
+        "fleet_edges": fleet_edges,
+        "predictions": predictions_count,
+        "sources": {name: {"age_s": age(name)} for name in ["aisstream", "synthesizer", "markets"]},
+        "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+    }
+
+
+@app.get("/api/query")
+async def nl_query(question: str = Query(...)):
+    """Stream a Claude-generated answer grounded in live Flink-processed state."""
+    from nl_query import stream_answer
+
+    async def gen():
+        try:
+            async for token in stream_answer(question, state):
+                yield {"data": token}
+        except Exception as e:
+            yield {"data": f"[ERROR: {e}]"}
+        yield {"event": "done", "data": ""}
+
+    return EventSourceResponse(gen())
+
+
+@app.get("/api/replay/dates")
+def replay_dates():
+    return {"dates": _replay.list_available_dates()}
+
+
+@app.post("/api/replay/start")
+async def replay_start(date: str = Query(...), speed: float = Query(default=10.0)):
+    _replay.stop_replay()
+    asyncio.create_task(_replay.run_replay(date, speed, state))
+    return {"status": "started", "date": date, "speed_x": speed}
+
+
+@app.post("/api/replay/stop")
+def replay_stop():
+    _replay.stop_replay()
+    return {"status": "stopped"}
+
+
 # ── Embed widget endpoint ───────────────────────────────────────────────────
 
 @app.get("/embed", response_class=HTMLResponse)
@@ -317,7 +437,8 @@ async def stream_status():
 
 def kafka_listener():
     consumer = make_consumer(
-        ["ais-positions", "intelligence-events", "briefings", "market-ticks"],
+        ["ais-positions", "intelligence-events", "briefings", "market-ticks",
+         "heatmap-cells", "vessel-predictions", "fleet-graph", "throughput-estimates"],
         "hormuzwatch-backend",
     )
     for msg in consumer:
@@ -325,6 +446,11 @@ def kafka_listener():
         if topic == "ais-positions":
             state.update_vessel(value)
             state.touch_source(value.get("_source", "aisstream"))
+            try:
+                from replay import record_position
+                record_position(value)
+            except Exception:
+                pass
         elif topic == "intelligence-events":
             state.add_event(value)
         elif topic == "briefings":
@@ -336,6 +462,14 @@ def kafka_listener():
             state.touch_source(src)
         elif topic == "portwatch-data":
             state.set_portwatch(value)
+        elif topic == "heatmap-cells":
+            state.update_heatmap(value)
+        elif topic == "vessel-predictions":
+            state.update_prediction(value)
+        elif topic == "fleet-graph":
+            state.update_fleet_edge(value)
+        elif topic == "throughput-estimates":
+            state.update_throughput(value)
 
 
 if __name__ == "__main__":
