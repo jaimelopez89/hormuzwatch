@@ -433,6 +433,33 @@ async def stream_status():
     return EventSourceResponse(gen())
 
 
+@app.get("/stream/briefing-tokens")
+async def stream_briefing_tokens():
+    """Stream the latest briefing body word-by-word for live display effect."""
+    async def gen() -> AsyncIterator[dict]:
+        last_seen_ts = None
+        while True:
+            b = state.briefing
+            if b and b.get("generated_at") != last_seen_ts:
+                last_seen_ts = b.get("generated_at")
+                body = b.get("body", "")
+                duration_ms = b.get("synthesis_duration_ms", 0)
+                yield {"data": json.dumps({
+                    "type": "meta",
+                    "headline": b.get("headline"),
+                    "duration_ms": duration_ms,
+                    "generated_at": b.get("generated_at"),
+                })}
+                words = body.split()
+                delay = min(0.08, duration_ms / max(len(words), 1) / 1000)
+                for word in words:
+                    yield {"data": json.dumps({"type": "token", "token": word + " "})}
+                    await asyncio.sleep(delay)
+                yield {"data": json.dumps({"type": "done"})}
+            await asyncio.sleep(5)
+    return EventSourceResponse(gen())
+
+
 # ── Kafka consumer background thread ───────────────────────────────────────
 
 def kafka_listener():
