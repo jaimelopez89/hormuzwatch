@@ -60,6 +60,7 @@ class Synthesizer:
         )
         try:
             t0 = time.time()
+            synthesis_started_at = datetime.now(timezone.utc).isoformat()
             resp = self.client.messages.create(
                 model=model,
                 max_tokens=600,
@@ -83,7 +84,7 @@ class Synthesizer:
             briefing["generated_at"] = datetime.now(timezone.utc).isoformat()
             briefing["model_used"] = model
             briefing["synthesis_duration_ms"] = duration_ms
-            briefing["synthesis_started_at"] = datetime.now(timezone.utc).isoformat()
+            briefing["synthesis_started_at"] = synthesis_started_at
             return briefing
         except Exception as e:
             log.error(f"Claude call failed: {e}")
