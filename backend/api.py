@@ -464,8 +464,7 @@ async def stream_briefing_tokens():
 
 def kafka_listener():
     consumer = make_consumer(
-        ["ais-positions", "intelligence-events", "briefings", "market-ticks",
-         "heatmap-cells", "vessel-predictions", "fleet-graph", "throughput-estimates"],
+        ["ais-positions", "intelligence-events", "briefings", "market-ticks"],
         "hormuzwatch-backend",
     )
     for msg in consumer:
@@ -479,7 +478,17 @@ def kafka_listener():
             except Exception:
                 pass
         elif topic == "intelligence-events":
-            state.add_event(value)
+            ev_type = value.get("type", "")
+            if ev_type == "HEATMAP_CELL":
+                state.update_heatmap(value)
+            elif ev_type == "TRAJECTORY_PREDICTION":
+                state.update_prediction(value)
+            elif ev_type == "FLEET_EDGE":
+                state.update_fleet_edge(value)
+            elif ev_type == "THROUGHPUT_SNAPSHOT":
+                state.update_throughput(value)
+            else:
+                state.add_event(value)
         elif topic == "briefings":
             state.set_briefing(value)
             state.touch_source("synthesizer")
@@ -489,14 +498,6 @@ def kafka_listener():
             state.touch_source(src)
         elif topic == "portwatch-data":
             state.set_portwatch(value)
-        elif topic == "heatmap-cells":
-            state.update_heatmap(value)
-        elif topic == "vessel-predictions":
-            state.update_prediction(value)
-        elif topic == "fleet-graph":
-            state.update_fleet_edge(value)
-        elif topic == "throughput-estimates":
-            state.update_throughput(value)
 
 
 if __name__ == "__main__":
