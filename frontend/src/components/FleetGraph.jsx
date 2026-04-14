@@ -13,12 +13,13 @@ export function FleetGraph() {
     async function draw() {
       const res = await fetch(`${API}/api/fleet-graph`).catch(() => null);
       if (!res?.ok) return;
-      const { nodes, edges } = await res.json();
+      const { nodes = [], edges = [] } = await res.json();
       if (!nodes?.length) return;
 
       setCounts({ nodes: nodes.length, edges: edges.length });
 
       const svg = d3.select(svgRef.current);
+      simRef.current?.stop();
       svg.selectAll("*").remove();
       const el = svgRef.current;
       const W = el.clientWidth || 460;
@@ -30,8 +31,6 @@ export function FleetGraph() {
         target: String(e.targetMmsi),
         count:  e.proximityCount || 1,
       }));
-
-      simRef.current?.stop();
       const sim = d3.forceSimulation(ns)
         .force("link",   d3.forceLink(es).id(n => n.id).distance(55))
         .force("charge", d3.forceManyBody().strength(-70))
