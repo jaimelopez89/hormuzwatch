@@ -9,6 +9,7 @@ export function StreamingBriefing() {
   const [latencyMs, setLatencyMs] = useState(null);
   const [live, setLive] = useState(false);
   const esRef = useRef(null);
+  const reconnectRef = useRef(null);
 
   useEffect(() => {
     function connect() {
@@ -32,10 +33,17 @@ export function StreamingBriefing() {
         } catch {}
       };
 
-      es.onerror = () => { setLive(false); setTimeout(connect, 5_000); };
+      es.onerror = () => {
+        setLive(false);
+        clearTimeout(reconnectRef.current);
+        reconnectRef.current = setTimeout(connect, 5_000);
+      };
     }
     connect();
-    return () => esRef.current?.close();
+    return () => {
+      clearTimeout(reconnectRef.current);
+      esRef.current?.close();
+    };
   }, []);
 
   return (
