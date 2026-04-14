@@ -2,8 +2,9 @@
 .env
 *.env.local
 certs/
-flink-jobs/src/main/resources/aiven-service.cert
-flink-jobs/src/main/resources/aiven-service.key
+ca.pem
+*.pem
+flink-jobs/src/main/resources/
 
 # Python
 *.pyc
