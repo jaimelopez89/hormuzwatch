@@ -96,9 +96,6 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
     mapRef.current = map;
 
     map.on("load", () => {
-      // Reference overlays
-      if (onMapReady) onMapReady(map);
-
       map.addSource("tanker-lanes", { type: "geojson", data: "/reference-data/geofences/tanker_lanes.geojson" });
       map.addLayer({ id: "tanker-lanes", type: "line", source: "tanker-lanes",
         paint: { "line-color": "#00d4ff", "line-width": 1.5, "line-opacity": 0.5, "line-dasharray": [6, 3] } });
@@ -152,6 +149,9 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
           "icon-allow-overlap": true,
         },
       });
+
+      // Fire onMapReady after all sources, layers, and images are initialized
+      if (onMapReady) onMapReady(map);
 
       const popup = new mapboxgl.Popup({
         closeButton: false, closeOnClick: false,
