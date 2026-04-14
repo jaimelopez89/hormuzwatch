@@ -46,12 +46,6 @@ public class HormuzWatchJob {
                         catch (Exception ex) { return Instant.now().toEpochMilli(); }
                     }));
 
-        DataStream<GeofenceDefinition> geofenceControl =
-            kafkaStringSource(env, kafkaProps, "geofence-control")
-            .map(s -> { try { return mapper.readValue(s, GeofenceDefinition.class); }
-                        catch (Exception e) { return null; } })
-            .filter(g -> g != null);
-
         // ── Existing detectors ───────────────────────────────────────────────
         DataStream<IntelligenceEvent> dark      = positions.keyBy(p -> p.mmsi).process(new DarkAISDetector());
         DataStream<IntelligenceEvent> traffic   = positions.keyBy(p -> "global").process(new TrafficVolumeDetector());
@@ -84,23 +78,53 @@ public class HormuzWatchJob {
             .process(new NewsAISCorrelator());
 
         // ── New detectors ────────────────────────────────────────────────────
-        DataStream<IntelligenceEvent> multiSignal      = MultiSignalCorrelator.apply(allAisEvents);
-        DataStream<IntelligenceEvent> geofenceBreaches = DynamicGeofenceFilter.apply(positions, geofenceControl);
+        DataStream<IntelligenceEvent> multiSignal = MultiSignalCorrelator.apply(allAisEvents);
 
         DataStream<HeatmapCell>          heatmap      = RiskHeatmapAggregator.apply(allAisEvents);
         DataStream<TrajectoryPrediction> trajectories = TrajectoryPredictor.apply(positions);
         DataStream<FleetEdge>            fleetGraph   = FleetGraphAggregator.apply(positions);
         DataStream<ThroughputSnapshot>   throughput   = ThroughputEstimator.apply(positions);
 
-        // ── Sinks ────────────────────────────────────────────────────────────
+        // ── Sinks — all output goes to intelligence-events (5-topic limit) ──
         DataStream<IntelligenceEvent> allEvents =
-            allAisEvents.union(correlations, multiSignal, geofenceBreaches);
+            allAisEvents.union(correlations, multiSignal);
         allEvents.sinkTo(kafkaSink(kafkaProps, "intelligence-events", mapper, IntelligenceEvent.class));
 
-        heatmap.sinkTo(kafkaSink(kafkaProps, "heatmap-cells",          mapper, HeatmapCell.class));
-        trajectories.sinkTo(kafkaSink(kafkaProps, "vessel-predictions", mapper, TrajectoryPrediction.class));
-        fleetGraph.sinkTo(kafkaSink(kafkaProps, "fleet-graph",          mapper, FleetEdge.class));
-        throughput.sinkTo(kafkaSink(kafkaProps, "throughput-estimates", mapper, ThroughputSnapshot.class));
+        // Fold specialised types into intelligence-events with a type discriminator
+        heatmap.map(h -> {
+            IntelligenceEvent ev = new IntelligenceEvent();
+            ev.type = "HEATMAP_CELL"; ev.severity = h.severity;
+            ev.lat = h.lat; ev.lon = h.lon; ev.timestamp = h.timestamp;
+            ev.scoreContribution = h.riskScore;
+            try { ev.description = mapper.writeValueAsString(h); } catch (Exception ignored) {}
+            return ev;
+        }).sinkTo(kafkaSink(kafkaProps, "intelligence-events", mapper, IntelligenceEvent.class));
+
+        trajectories.map(t -> {
+            IntelligenceEvent ev = new IntelligenceEvent();
+            ev.type = "TRAJECTORY_PREDICTION"; ev.mmsi = t.mmsi;
+            if (t.predictedPath != null && !t.predictedPath.isEmpty()) {
+                ev.lat = t.predictedPath.get(0)[0]; ev.lon = t.predictedPath.get(0)[1];
+            }
+            ev.timestamp = t.timestamp;
+            try { ev.description = mapper.writeValueAsString(t); } catch (Exception ignored) {}
+            return ev;
+        }).sinkTo(kafkaSink(kafkaProps, "intelligence-events", mapper, IntelligenceEvent.class));
+
+        fleetGraph.map(f -> {
+            IntelligenceEvent ev = new IntelligenceEvent();
+            ev.type = "FLEET_EDGE"; ev.mmsi = f.sourceMmsi;
+            ev.lat = f.lastLat; ev.lon = f.lastLon; ev.timestamp = f.lastSeen;
+            try { ev.description = mapper.writeValueAsString(f); } catch (Exception ignored) {}
+            return ev;
+        }).sinkTo(kafkaSink(kafkaProps, "intelligence-events", mapper, IntelligenceEvent.class));
+
+        throughput.map(t -> {
+            IntelligenceEvent ev = new IntelligenceEvent();
+            ev.type = "THROUGHPUT_SNAPSHOT"; ev.timestamp = t.timestamp;
+            try { ev.description = mapper.writeValueAsString(t); } catch (Exception ignored) {}
+            return ev;
+        }).sinkTo(kafkaSink(kafkaProps, "intelligence-events", mapper, IntelligenceEvent.class));
 
         env.execute("HormuzWatch Intelligence Pipeline v2");
     }
