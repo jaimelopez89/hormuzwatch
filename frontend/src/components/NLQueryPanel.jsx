@@ -13,6 +13,10 @@ export function NLQueryPanel() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [history]);
 
+  useEffect(() => {
+    return () => esRef.current?.close();
+  }, []);
+
   function submit(e) {
     e.preventDefault();
     const q = question.trim();
