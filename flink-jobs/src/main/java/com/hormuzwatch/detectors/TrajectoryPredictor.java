@@ -13,7 +13,7 @@ public class TrajectoryPredictor {
 
     private static final double R_NM = 3440.065;
 
-    static double[] project(double lat, double lon, double courseDegs, double distNm) {
+    public static double[] project(double lat, double lon, double courseDegs, double distNm) {
         double d = distNm / R_NM;
         double brg = Math.toRadians(courseDegs);
         double lat1 = Math.toRadians(lat);
