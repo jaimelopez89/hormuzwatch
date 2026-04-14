@@ -11,6 +11,7 @@ function uid() {
 
 export function GeofenceStudio({ map }) {
   const drawRef = useRef(null);
+  const geofencesRef = useRef([]);
   const [geofences, setGeofences] = useState([]);
   const [open, setOpen] = useState(false);
 
@@ -18,6 +19,11 @@ export function GeofenceStudio({ map }) {
   useEffect(() => {
     fetch(`${API}/api/geofences`).then(r => r.ok ? r.json() : []).then(setGeofences).catch(() => {});
   }, []);
+
+  // Keep geofencesRef in sync with state
+  useEffect(() => {
+    geofencesRef.current = geofences;
+  }, [geofences]);
 
   useEffect(() => {
     if (!map) return;
@@ -65,11 +71,9 @@ export function GeofenceStudio({ map }) {
 
     function onDelete(e) {
       for (const f of e.features) {
-        setGeofences(prev => {
-          const gf = prev.find(g => g.drawId === f.id);
-          if (gf) fetch(`${API}/api/geofences/${gf.id}`, { method: "DELETE" }).catch(() => {});
-          return prev.filter(g => g.drawId !== f.id);
-        });
+        const gf = geofencesRef.current.find(g => g.drawId === f.id);
+        if (gf) fetch(`${API}/api/geofences/${gf.id}`, { method: "DELETE" }).catch(() => {});
+        setGeofences(prev => prev.filter(g => g.drawId !== f.id));
       }
     }
 
@@ -123,7 +127,7 @@ export function GeofenceStudio({ map }) {
           }}
         >
           {geofences.length === 0 ? (
-            <p className="text-xs italic" style={{ color: "#374151" }}>
+            <p className="text-xs italic" style={{ color: "#64748b" }}>
               Use polygon tool (top-right) to draw a zone.
             </p>
           ) : (
