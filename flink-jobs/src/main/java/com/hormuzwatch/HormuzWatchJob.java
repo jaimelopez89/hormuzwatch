@@ -23,6 +23,7 @@ public class HormuzWatchJob {
 
     public static void main(String[] args) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        flinkConfig = env.getConfiguration();
         // Note: checkpointing and parallelism are managed by Ververica Cloud deployment config
 
         Properties kafkaProps = kafkaProperties();
@@ -109,9 +110,23 @@ public class HormuzWatchJob {
     }
 
     private static String cfg(String key) {
+        // 1. Environment variable (e.g. set via OS/container)
         String v = System.getenv(key);
-        return (v != null && !v.isEmpty()) ? v : System.getProperty(key, "");
+        if (v != null && !v.isEmpty()) return v;
+        // 2. JVM system property (e.g. -DKAFKA_BOOTSTRAP_SERVERS=...)
+        v = System.getProperty(key, "");
+        if (!v.isEmpty()) return v;
+        // 3. Flink deployment config — populated from flinkConf in ververica-deployment.yaml
+        if (flinkConfig != null) {
+            v = flinkConfig.getOptional(
+                org.apache.flink.configuration.ConfigOptions.key(key).stringType().noDefaultValue()
+            ).orElse("");
+        }
+        return v != null ? v : "";
     }
+
+    // Flink configuration — populated from deployment flinkConf; set in main() before any cfg() call
+    private static org.apache.flink.configuration.ReadableConfig flinkConfig;
 
     private static Properties kafkaProperties() {
         Properties p = new Properties();
