@@ -27,17 +27,19 @@ function toGeoJSON(cells) {
 }
 
 export function HeatmapLayer({ map }) {
-  const timerRef = useRef(null);
+  const timerRef  = useRef(null);
+  const activeRef = useRef(true);  // false once this component unmounts
 
   async function refresh() {
-    if (!map) return;
+    if (!map || !activeRef.current) return;
     const res = await fetch(`${API}/api/heatmap`).catch(() => null);
-    if (!res?.ok) return;
+    if (!res?.ok || !activeRef.current) return;
     const cells = await res.json();
-    map.getSource(SRC)?.setData(toGeoJSON(cells));
+    try { map.getSource(SRC)?.setData(toGeoJSON(cells)); } catch {}
   }
 
   useEffect(() => {
+    activeRef.current = true;
     if (!map) return;
 
     function init() {
@@ -70,9 +72,13 @@ export function HeatmapLayer({ map }) {
     }
 
     return () => {
+      activeRef.current = false;
       clearInterval(timerRef.current);
-      if (map.getLayer(LYR))  map.removeLayer(LYR);
-      if (map.getSource(SRC)) map.removeSource(SRC);
+      // Map may already be destroyed (Map.jsx cleanup runs before ours)
+      try {
+        if (map.getLayer(LYR))  map.removeLayer(LYR);
+        if (map.getSource(SRC)) map.removeSource(SRC);
+      } catch {}
     };
   }, [map]);
 

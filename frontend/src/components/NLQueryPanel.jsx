@@ -26,7 +26,7 @@ export function NLQueryPanel() {
     setHistory(h => [...h, { role: "user", text: q }, { role: "ai", text: "" }]);
 
     esRef.current?.close();
-    const es = new EventSource(`${API}/api/query?q=${encodeURIComponent(q)}`);
+    const es = new EventSource(`${API}/api/query?question=${encodeURIComponent(q)}`);
     esRef.current = es;
 
     es.onmessage = ev => {

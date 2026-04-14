@@ -262,7 +262,7 @@ def get_telemetry():
         "intel_events_per_min": ev_count,
         "ais_messages_per_sec": None,
         "avg_synthesis_latency_ms": None,
-        "active_topics": 8,
+        "active_topics": 4,
         "heatmap_cells": heatmap_cells,
         "fleet_edges": fleet_edges,
         "predictions": predictions_count,

@@ -81,9 +81,12 @@ export function GeofenceStudio({ map }) {
     map.on("draw.delete", onDelete);
 
     return () => {
-      map.off("draw.create", onCreate);
-      map.off("draw.delete", onDelete);
-      if (map.hasControl(draw)) map.removeControl(draw);
+      // Map may already be destroyed (Map.jsx cleanup runs before ours)
+      try {
+        map.off("draw.create", onCreate);
+        map.off("draw.delete", onDelete);
+        if (map.hasControl(draw)) map.removeControl(draw);
+      } catch {}
     };
   }, [map]);
 
