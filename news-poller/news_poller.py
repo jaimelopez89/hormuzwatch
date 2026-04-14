@@ -16,15 +16,54 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 FEEDS = [
-    ("reuters", "https://feeds.reuters.com/reuters/worldNews"),
-    ("aljazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
-    ("usni", "https://news.usni.org/feed"),
-    ("ap", "https://rsshub.app/apnews/topics/world-news"),
+    # Tier 1 — Maritime / defence primary sources
+    ("usni",       "https://news.usni.org/feed"),
+    ("maritimeexecutive", "https://maritime-executive.com/rss/articles"),
+    ("tradewinds", "https://www.tradewindsnews.com/rss"),
+    ("lloydslist", "https://lloydslist.maritimeintelligence.informa.com/rss"),
+
+    # Tier 2 — General news with strong ME/energy coverage
+    ("reuters",    "https://feeds.reuters.com/reuters/worldNews"),
+    ("aljazeera",  "https://www.aljazeera.com/xml/rss/all.xml"),
+    ("ap",         "https://rsshub.app/apnews/topics/world-news"),
+    ("bbc",        "https://feeds.bbci.co.uk/news/world/middle_east/rss.xml"),
+    ("ft",         "https://www.ft.com/world/middle-east?format=rss"),
+
+    # Tier 3 — Energy / sanctions specific
+    ("oilprice",   "https://oilprice.com/rss/main"),
+    ("platts",     "https://www.spglobal.com/commodityinsights/en/rss-feed/oil"),
+    ("trafigura",  "https://www.trafigura.com/news-and-insights/rss"),
+    ("ofac",       "https://home.treasury.gov/news/press-releases/rss"),
+
+    # Tier 4 — Regional
+    ("iranintl",      "https://www.iranintl.com/en/rss"),
+    ("middleeasteye", "https://www.middleeasteye.net/rss"),
+    ("gulfnews",      "https://gulfnews.com/rss"),
+    ("alarabiya",     "https://english.alarabiya.net/tools/rss.html"),
+    ("debkafile",     "https://www.debka.com/feed/"),
+
+    # Tier 5 — Shipping insurance / maritime security
+    ("ics-shipping",  "https://www.ics-shipping.org/rss"),
+    ("bimco",         "https://www.bimco.org/news/rss"),
+
+    # Tier 6 — OSINT / defence watchers
+    ("warontherocks", "https://warontherocks.com/feed/"),
+    ("bellingcat",    "https://www.bellingcat.com/feed/"),
+    ("rferl",         "https://www.rferl.org/api/zpkiqmoikreueukt"),  # RFE/RL Middle East
 ]
 
 KEYWORDS = [
-    "iran", "hormuz", "irgc", "tanker", "strait",
-    "persian gulf", "oil sanctions", "gulf of oman",
+    # Geography
+    "hormuz", "strait of hormuz", "persian gulf", "gulf of oman",
+    "oman", "uae", "bahrain", "bandar abbas", "kish island", "qeshm",
+    # Actors
+    "iran", "irgc", "irgcn", "nioc", "irisl",
+    # Events
+    "tanker", "oil tanker", "lng carrier", "vessel seizure", "ship seized",
+    "naval", "warship", "maritime", "sanctions", "oil sanctions",
+    "drone attack", "missile", "mine", "limpet",
+    # Commodities
+    "crude oil", "brent", "wti", "oil price",
 ]
 
 TOPIC = "news-events"

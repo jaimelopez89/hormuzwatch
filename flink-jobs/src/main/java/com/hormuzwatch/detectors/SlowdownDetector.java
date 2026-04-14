@@ -34,7 +34,7 @@ public class SlowdownDetector extends KeyedProcessFunction<Long, VesselPosition,
         Double prev = lastSpeed.value();
         if (prev != null && isSlowdown(prev, pos.speed)) {
             IntelligenceEvent ev = new IntelligenceEvent();
-            ev.type = "VESSEL_SLOWDOWN";
+            ev.type = "SLOWDOWN";
             ev.severity = "MEDIUM";
             ev.scoreContribution = 8;
             ev.mmsi = pos.mmsi;

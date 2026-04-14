@@ -64,8 +64,20 @@ class Synthesizer:
                 max_tokens=600,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = resp.content[0].text
-            briefing = json.loads(raw)
+            raw = resp.content[0].text.strip()
+            # Strip markdown fences if present (```json ... ``` or ``` ... ```)
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+                raw = raw.strip()
+            # Find the first { ... } block in case there's any preamble
+            import re as _re
+            m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+            if not m:
+                log.error("No JSON object found in Claude response: %r", raw[:200])
+                return None
+            briefing = json.loads(m.group())
             briefing["generated_at"] = datetime.now(timezone.utc).isoformat()
             briefing["model_used"] = model
             return briefing
@@ -75,7 +87,9 @@ class Synthesizer:
 
     def run(self):
         from kafka_utils import make_consumer
-        consumer = make_consumer([INPUT_TOPIC, MARKET_TOPIC, NEWS_TOPIC], "llm-synthesizer")
+        # 15-min interval — prevents rebalance during long Claude API calls
+        consumer = make_consumer([INPUT_TOPIC, MARKET_TOPIC, NEWS_TOPIC], "llm-synthesizer",
+                                 max_poll_interval_ms=900_000)
         log.info("LLM Synthesizer started.")
         last_score = self.risk_score
         for msg in consumer:

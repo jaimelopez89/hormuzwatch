@@ -14,6 +14,10 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.configuration.ConfigOptions;
+import org.apache.flink.configuration.GlobalConfiguration;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Properties;
 
 public class HormuzWatchJob {
@@ -36,7 +40,15 @@ public class HormuzWatchJob {
             .map(s -> {
                 try { return mapper.readValue(s, NewsEvent.class); }
                 catch (Exception e) { throw new RuntimeException(e); }
-            });
+            })
+            // intervalJoin requires event-time timestamps; extract from published_at with 2-min slack
+            .assignTimestampsAndWatermarks(
+                WatermarkStrategy.<NewsEvent>forBoundedOutOfOrderness(Duration.ofMinutes(2))
+                    .withTimestampAssigner((event, ts) -> {
+                        try { return Instant.parse(event.publishedAt).toEpochMilli(); }
+                        catch (Exception ex) { return Instant.now().toEpochMilli(); }
+                    })
+            );
 
         // --- Detectors ---
         DataStream<IntelligenceEvent> dark = positions
@@ -48,6 +60,7 @@ public class HormuzWatchJob {
             .process(new TrafficVolumeDetector());
 
         DataStream<IntelligenceEvent> military = positions
+            .keyBy(p -> p.mmsi)
             .process(new MilitaryProximityDetector());
 
         DataStream<IntelligenceEvent> slowdowns = positions
@@ -60,9 +73,29 @@ public class HormuzWatchJob {
             .window(SlidingProcessingTimeWindows.of(Time.minutes(30), Time.minutes(5)))
             .process(new TankerConcentrationDetector());
 
-        // Merge all AIS intelligence events
+        // STS rendezvous — keyed by 0.1° grid cell (same resolution as anchorage zones)
+        DataStream<IntelligenceEvent> sts = positions
+            .keyBy(p -> String.format("%.1f_%.1f",
+                Math.floor(p.lat * 10) / 10, Math.floor(p.lon * 10) / 10))
+            .process(new STSRendezvousDetector());
+
+        // Sanctions screening — keyed by MMSI
+        DataStream<IntelligenceEvent> sanctions = positions
+            .keyBy(p -> p.mmsi)
+            .process(new SanctionsHitDetector());
+
+        // Merge all AIS intelligence events, then assign event-time timestamps so
+        // the interval join can compute its ±5-min window (all detectors set
+        // event.timestamp = Instant.now().toString(), so this is always valid)
         DataStream<IntelligenceEvent> allAisEvents =
-            dark.union(traffic, military, slowdowns, clusters);
+            dark.union(traffic, military, slowdowns, clusters, sts, sanctions)
+            .assignTimestampsAndWatermarks(
+                WatermarkStrategy.<IntelligenceEvent>forBoundedOutOfOrderness(Duration.ofSeconds(30))
+                    .withTimestampAssigner((event, ts) -> {
+                        try { return Instant.parse(event.timestamp).toEpochMilli(); }
+                        catch (Exception ex) { return Instant.now().toEpochMilli(); }
+                    })
+            );
 
         // News x AIS correlation (10-min interval join)
         DataStream<IntelligenceEvent> correlations = news
@@ -84,22 +117,66 @@ public class HormuzWatchJob {
             Math.floor(lat * 2) / 2, Math.floor(lon * 2) / 2);
     }
 
+    private static String cfg(String key) {
+        // 1. Env var (local dev)
+        String v = System.getenv(key);
+        if (v != null && !v.isEmpty()) return v;
+        // 2. JVM system property (env.java.opts)
+        v = System.getProperty(key, "");
+        if (!v.isEmpty()) return v;
+        // 3. Flink cluster configuration (flinkConf in Ververica deployment → flink-conf.yaml in container)
+        try {
+            v = GlobalConfiguration.loadConfiguration()
+                    .get(ConfigOptions.key(key).stringType().defaultValue(""));
+        } catch (Exception ignored) {}
+        return v != null ? v : "";
+    }
+
     private static Properties kafkaProperties() {
         Properties p = new Properties();
-        p.put("bootstrap.servers", System.getenv("KAFKA_BOOTSTRAP_SERVERS"));
+        p.put("bootstrap.servers", cfg("KAFKA_BOOTSTRAP_SERVERS"));
         p.put("security.protocol", "SSL");
-        // Support both PEM cert (cloud) and JKS truststore (local)
-        String caCert = System.getenv("KAFKA_CA_CERT");
-        if (caCert != null && !caCert.isEmpty()) {
+
+        // Truststore — verify Aiven server identity
+        String caCert = loadPem("KAFKA_CA_CERT", "/aiven-ca.pem");
+        if (!caCert.isEmpty()) {
             p.put("ssl.truststore.type", "PEM");
             p.put("ssl.truststore.certificates", caCert);
-        } else {
-            p.put("ssl.truststore.location",
-                System.getenv().getOrDefault("KAFKA_TRUSTSTORE_PATH", ""));
-            p.put("ssl.truststore.password",
-                System.getenv().getOrDefault("KAFKA_TRUSTSTORE_PASSWORD", ""));
         }
+
+        // Keystore — client certificate + key for Aiven mTLS
+        String clientCert = loadPem("KAFKA_CLIENT_CERT", "/aiven-service.cert");
+        String clientKey  = loadPem("KAFKA_CLIENT_KEY",  "/aiven-service.key");
+        if (!clientCert.isEmpty() && !clientKey.isEmpty()) {
+            p.put("ssl.keystore.type", "PEM");
+            p.put("ssl.keystore.certificate.chain", clientCert);
+            p.put("ssl.keystore.key", clientKey);
+        }
+
         return p;
+    }
+
+    /**
+     * Load a PEM credential: first from flinkConf/env (raw or base64), then from a bundled
+     * classpath resource. Returns empty string if nothing found.
+     */
+    private static String loadPem(String configKey, String classpathResource) {
+        String val = cfg(configKey);
+        if (!val.isEmpty()) {
+            // Accept base64-encoded PEM (useful for flinkConf values)
+            if (!val.startsWith("-----")) {
+                val = new String(java.util.Base64.getDecoder().decode(val),
+                        java.nio.charset.StandardCharsets.UTF_8);
+            }
+            return val;
+        }
+        // Fall back to cert bundled in the JAR
+        try (java.io.InputStream is = HormuzWatchJob.class.getResourceAsStream(classpathResource)) {
+            if (is != null) {
+                return new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }
+        } catch (Exception ignored) {}
+        return "";
     }
 
     private static DataStream<String> kafkaStringSource(

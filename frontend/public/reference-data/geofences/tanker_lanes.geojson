@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Inbound Lane", "direction": "inbound" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [56.45, 26.35], [56.70, 26.20], [57.10, 26.05]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Outbound Lane", "direction": "outbound" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [57.10, 26.25], [56.70, 26.40], [56.45, 26.55]
+        ]
+      }
+    }
+  ]
+}

@@ -1,53 +1,109 @@
 import { useState } from "react";
 import { Header } from "./components/Header";
+import { HeroStatus } from "./components/HeroStatus";
 import { Map } from "./components/Map";
-import { BriefingPanel } from "./components/BriefingPanel";
-import { MarketPanel } from "./components/MarketPanel";
+import { Sidebar } from "./components/Sidebar";
 import { IntelFeed } from "./components/IntelFeed";
+import { VesselDetail } from "./components/VesselDetail";
+import { ToastAlerts } from "./components/ToastAlerts";
+import { TransitChart } from "./components/TransitChart";
+import { PolymarketWidget } from "./components/PolymarketWidget";
+import { HealthDashboard } from "./components/HealthDashboard";
+import { IncidentTimeline } from "./components/IncidentTimeline";
 import { useVesselStream } from "./hooks/useVesselStream";
 import { useBriefingStream } from "./hooks/useBriefingStream";
 import { useMarketStream } from "./hooks/useMarketStream";
+import { useBrowserAlerts } from "./hooks/useBrowserAlerts";
+
+const TABS = [
+  { id: "map",   label: "LIVE MAP" },
+  { id: "intel", label: "INTEL FEED" },
+  { id: "data",  label: "DATA & CHARTS" },
+];
 
 export default function App() {
-  const vessels = useVesselStream();
+  const vessels  = useVesselStream();
   const briefing = useBriefingStream();
-  const market = useMarketStream();
+  const market   = useMarketStream();
   const [selectedVessel, setSelectedVessel] = useState(null);
+  const [tab, setTab] = useState("map");
+
+  useBrowserAlerts(true);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    // Root: full-height flex column, nothing scrolls at this level
+    <div className="flex flex-col" style={{ height: "100dvh", background: "#030810", overflow: "hidden" }}>
       <Header />
+      <ToastAlerts />
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Map — center, takes most space */}
-        <div className="flex-1 relative">
-          <Map vessels={vessels} onVesselClick={setSelectedVessel} />
-          {selectedVessel && (
-            <div className="absolute bottom-4 left-4 panel w-64 z-10">
-              <div className="panel-label">// Selected Vessel</div>
-              <p className="text-xs text-bright font-semibold">{selectedVessel.name || "Unknown"}</p>
-              <p className="text-xs text-dimtext font-mono">MMSI: {selectedVessel.mmsi}</p>
-              <p className="text-xs text-dimtext font-mono">Speed: {selectedVessel.speed} kt</p>
-              <button
-                className="mt-2 text-xs text-dimtext hover:text-primary font-mono"
-                onClick={() => setSelectedVessel(null)}
-              >
-                ✕ dismiss
-              </button>
-            </div>
-          )}
-        </div>
+      {/* Hero — compact single row */}
+      <HeroStatus />
 
-        {/* Right sidebar */}
-        <div className="w-80 flex flex-col gap-2 p-2 overflow-y-auto border-l border-border">
-          <BriefingPanel briefing={briefing} />
-          <MarketPanel market={market} />
-        </div>
+      {/* Tab bar — sticky */}
+      <div className="flex shrink-0 border-b" style={{ borderColor: "#0f2a40" }}>
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className="flex-1 font-mono text-xs py-2 tracking-widest transition-colors"
+            style={{
+              color: tab === t.id ? "#00d4ff" : "#4a5568",
+              borderBottom: tab === t.id ? "2px solid #00d4ff" : "2px solid transparent",
+              background: tab === t.id ? "#00d4ff06" : "transparent",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Bottom intel feed */}
-      <div className="h-32 border-t border-border p-2">
-        <IntelFeed />
+      {/* Main content — takes all remaining space */}
+      <div className="flex-1 overflow-hidden">
+
+        {/* MAP TAB */}
+        {tab === "map" && (
+          <div className="flex h-full">
+            {/* Map fills left — breakdown badge is rendered inside Map.jsx */}
+            <div className="flex-1 relative min-w-0">
+              <Map vessels={vessels} onVesselClick={setSelectedVessel} />
+              <VesselDetail vessel={selectedVessel} onClose={() => setSelectedVessel(null)} />
+            </div>
+
+            {/* Right sidebar */}
+            <div className="flex flex-col shrink-0 overflow-hidden" style={{ width: 580, borderLeft: "1px solid #0f2a40", background: "#040b14" }}>
+              {/* Briefing + Market stacked, scrollable */}
+              <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
+                <Sidebar briefing={briefing} market={market} />
+              </div>
+              {/* Intel strip at bottom of sidebar */}
+              <div style={{ height: 200, borderTop: "1px solid #0f2a40", flexShrink: 0 }}>
+                <IntelFeed compact />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* INTEL TAB */}
+        {tab === "intel" && (
+          <div className="h-full p-3">
+            <IntelFeed fullHeight />
+          </div>
+        )}
+
+        {/* DATA TAB */}
+        {tab === "data" && (
+          <div className="h-full overflow-y-auto p-3 flex flex-col gap-3">
+            <TransitChart />
+            <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <PolymarketWidget />
+              <HealthDashboard />
+            </div>
+            <IncidentTimeline />
+            <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <Sidebar briefing={briefing} market={market} inline />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

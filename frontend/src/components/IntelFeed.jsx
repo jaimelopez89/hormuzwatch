@@ -1,17 +1,39 @@
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useRef, useState } from "react";
 
+function shareEvent(ev) {
+  const text = `[HormuzWatch ${ev.severity}] ${ev.description}`;
+  const url  = window.location.origin;
+  if (navigator.share) {
+    navigator.share({ title: "HormuzWatch Alert", text, url }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(`${text}\n${url}`);
+  }
+}
+
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-const SEV_COLORS = {
-  CRITICAL: "severity-critical",
-  HIGH: "severity-high",
-  MEDIUM: "severity-medium",
-  LOW: "severity-low",
+const TYPE_META = {
+  DARK_AIS:           { icon: "📡", label: "DARK AIS" },
+  STS_RENDEZVOUS:     { icon: "🔄", label: "STS TRANSFER" },
+  SANCTIONS_HIT:      { icon: "🚨", label: "SANCTIONS HIT" },
+  MILITARY_PROXIMITY: { icon: "⚔️", label: "MILITARY" },
+  TRAFFIC_ANOMALY:    { icon: "📊", label: "TRAFFIC" },
+  SLOWDOWN:           { icon: "🐢", label: "SLOWDOWN" },
+  TANKER_CLUSTER:     { icon: "🛢️", label: "CLUSTER" },
+  NEWS_CORRELATION:   { icon: "📰", label: "NEWS INTEL" },
 };
 
-export function IntelFeed() {
+const SEV_STYLE = {
+  CRITICAL: { color: "#ef4444", bg: "#ef444411" },
+  HIGH:     { color: "#f97316", bg: "#f9731611" },
+  MEDIUM:   { color: "#f59e0b", bg: "#f59e0b11" },
+  LOW:      { color: "#22c55e", bg: "transparent" },
+};
+
+export function IntelFeed({ fullHeight = false, compact = false, className = "" }) {
   const [events, setEvents] = useState([]);
+  const [filter, setFilter] = useState("ALL");
   const esRef = useRef(null);
 
   useEffect(() => {
@@ -21,7 +43,7 @@ export function IntelFeed() {
       es.onmessage = (e) => {
         try {
           const ev = JSON.parse(e.data);
-          setEvents((prev) => [ev, ...prev].slice(0, 100));
+          setEvents((prev) => [ev, ...prev].slice(0, 200));
         } catch {}
       };
       es.onerror = () => { es.close(); setTimeout(connect, 5000); };
@@ -30,25 +52,75 @@ export function IntelFeed() {
     return () => esRef.current?.close();
   }, []);
 
+  const filtered = filter === "ALL"
+    ? events
+    : events.filter((e) => e.severity === filter);
+
   return (
-    <div className="panel h-full overflow-hidden flex flex-col">
-      <div className="panel-label">// Live Intelligence Feed</div>
-      <div className="overflow-y-auto flex-1 flex flex-col gap-1">
-        {events.length === 0
-          ? <p className="text-xs text-dimtext italic">Monitoring…</p>
-          : events.map((ev, i) => (
-            <div key={i} className="flex gap-2 text-xs py-0.5 border-b border-border last:border-0">
-              <span className={`font-mono font-bold w-16 shrink-0 ${SEV_COLORS[ev.severity] || "text-dimtext"}`}>
-                {ev.severity}
-              </span>
-              <span className="font-mono text-primary w-28 shrink-0 truncate">{ev.type}</span>
-              <span className="text-dimtext flex-1 truncate">{ev.description}</span>
-              <span className="font-mono text-dimtext shrink-0">
-                {ev.timestamp ? formatDistanceToNow(new Date(ev.timestamp), { addSuffix: true }) : ""}
-              </span>
-            </div>
-          ))
-        }
+    <div className={`overflow-hidden flex flex-col h-full ${compact ? "p-2" : "panel"} ${className}`}>
+      {/* Header row */}
+      <div className="flex items-center gap-2 mb-2">
+        <div className="panel-label mb-0">// Live Intelligence Feed</div>
+        <div className="flex-1" />
+        {/* Filter buttons */}
+        {["ALL", "CRITICAL", "HIGH", "MEDIUM"].map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className="font-mono text-xs px-2 py-0.5 rounded border transition-colors"
+            style={{
+              borderColor: filter === f ? (SEV_STYLE[f]?.color || "#00d4ff") : "#0f2a40",
+              color: filter === f ? (SEV_STYLE[f]?.color || "#00d4ff") : "#4a5568",
+              background: filter === f ? (SEV_STYLE[f]?.bg || "#00d4ff11") : "transparent",
+            }}
+          >
+            {f}
+          </button>
+        ))}
+        <span className="font-mono text-xs text-dimtext">{filtered.length}</span>
+      </div>
+
+      {/* Event rows */}
+      <div className="overflow-y-auto flex-1 flex flex-col gap-0.5">
+        {filtered.length === 0 ? (
+          <p className="text-xs text-dimtext italic">Monitoring…</p>
+        ) : (
+          filtered.map((ev, i) => {
+            const meta = TYPE_META[ev.type] || { icon: "⚠️", label: ev.type };
+            const sev = SEV_STYLE[ev.severity] || SEV_STYLE.LOW;
+            return (
+              <div
+                key={i}
+                className="flex items-start gap-2 px-2 py-1 rounded group"
+                style={{ background: sev.bg }}
+              >
+                <span className="text-sm shrink-0 mt-0.5">{meta.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-xs font-bold shrink-0" style={{ color: sev.color }}>
+                      {ev.severity}
+                    </span>
+                    <span className="font-mono text-xs shrink-0" style={{ color: "#00d4ff", opacity: 0.7 }}>
+                      {meta.label}
+                    </span>
+                    <span className="font-mono text-xs text-dimtext ml-auto shrink-0">
+                      {ev.timestamp
+                        ? formatDistanceToNow(new Date(ev.timestamp), { addSuffix: true })
+                        : ""}
+                    </span>
+                    <button
+                      onClick={() => shareEvent(ev)}
+                      title="Share this alert"
+                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ color: "#374151", fontSize: 10, lineHeight: 1, padding: "0 2px" }}
+                    >↗</button>
+                  </div>
+                  <p className="text-xs text-dimtext leading-snug truncate">{ev.description}</p>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

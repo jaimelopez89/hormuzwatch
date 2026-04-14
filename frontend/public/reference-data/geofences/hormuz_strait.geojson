@@ -1,0 +1,12 @@
+{
+  "type": "Feature",
+  "properties": { "name": "Strait of Hormuz Corridor", "type": "strait" },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[
+      [56.0, 25.5], [57.5, 25.5], [58.0, 26.2],
+      [57.8, 27.0], [56.5, 27.2], [55.8, 26.8],
+      [56.0, 25.5]
+    ]]
+  }
+}

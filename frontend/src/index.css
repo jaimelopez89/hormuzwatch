@@ -4,9 +4,25 @@
 @tailwind utilities;
 
 * { box-sizing: border-box; }
-body { background: #060a0f; color: #94a3b8; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+body { background: #030810; color: #94a3b8; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
 
-.glow-primary { box-shadow: 0 0 8px #00d4ff88; }
+/* Scanline texture — subtle CRT effect on top of everything */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.glow-primary  { box-shadow: 0 0 8px #00d4ff88; }
 .glow-critical { box-shadow: 0 0 10px #ef444488; }
 .glow-medium   { box-shadow: 0 0 8px #f59e0b88; }
 
@@ -19,6 +35,29 @@ body { background: #060a0f; color: #94a3b8; font-family: 'Inter', system-ui, san
 .severity-medium   { color: #f59e0b; }
 .severity-low      { color: #22c55e; }
 
-.panel { background: #071520; border: 1px solid #0f2a40; border-radius: 6px; padding: 12px; }
+.panel { background: #040c18; border: 1px solid #0f2a40; border-radius: 6px; padding: 12px; }
 .panel-label { font-family: 'JetBrains Mono', monospace; font-size: 9px;
   letter-spacing: 2px; color: #00d4ff; text-transform: uppercase; margin-bottom: 8px; }
+
+/* Toast slide-in animation */
+@keyframes toast-in {
+  from { transform: translateX(120%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.animate-toast-in { animation: toast-in 0.3s ease-out forwards; }
+
+/* Mapbox vessel hover popup */
+.vessel-popup .mapboxgl-popup-content {
+  background: #040c18;
+  border: 1px solid #0f2a40;
+  border-radius: 4px;
+  padding: 0;
+  box-shadow: 0 4px 20px #00000066;
+}
+.vessel-popup .mapboxgl-popup-tip {
+  border-top-color: #0f2a40;
+}
+
+/* Hide Mapbox attribution for cleaner look */
+.mapboxgl-ctrl-logo { opacity: 0.3 !important; }
+.mapboxgl-ctrl-attrib { opacity: 0.3 !important; font-size: 9px !important; }

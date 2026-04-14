@@ -40,7 +40,7 @@ public class TankerConcentrationDetector
         double avgSpeed = totalSpeed / count;
         if (isCluster(count, avgSpeed)) {
             IntelligenceEvent ev = new IntelligenceEvent();
-            ev.type = "TANKER_CONCENTRATION";
+            ev.type = "TANKER_CLUSTER";
             ev.severity = "MEDIUM";
             ev.scoreContribution = 10;
             ev.lat = sumLat / count;

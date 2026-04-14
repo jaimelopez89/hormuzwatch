@@ -3,8 +3,10 @@ import asyncio
 import json
 import logging
 import os
+import ssl
 from datetime import datetime, timezone
 
+import certifi
 import websockets
 from dotenv import load_dotenv
 
@@ -30,11 +32,19 @@ def is_in_hormuz_bbox(lat: float, lon: float) -> bool:
 
 
 def parse_position(raw: dict) -> dict | None:
+    """Parse AIS position report messages (Class A and B)."""
     try:
         meta = raw["MetaData"]
-        report = raw["Message"]["PositionReport"]
-        lat = report["Latitude"]
-        lon = report["Longitude"]
+        report = (
+            raw["Message"].get("PositionReport")
+            or raw["Message"].get("StandardClassBPositionReport")
+        )
+        if report is None:
+            return None
+        lat = report.get("Latitude") or meta.get("latitude")
+        lon = report.get("Longitude") or meta.get("longitude")
+        if lat is None or lon is None:
+            return None
         if not is_in_hormuz_bbox(lat, lon):
             return None
         return {
@@ -54,6 +64,47 @@ def parse_position(raw: dict) -> dict | None:
         return None
 
 
+def parse_static(raw: dict) -> dict | None:
+    """Parse AIS Type 5 / 24 static data — ship name, IMO, destination, draught."""
+    try:
+        meta = raw["MetaData"]
+        # StaticDataReport wraps either PartA or PartB
+        sd = raw["Message"].get("StaticDataReport") or {}
+        part_a = sd.get("ReportA") or {}
+        part_b = sd.get("ReportB") or {}
+        # Voyage data (Type 5)
+        voyage = raw["Message"].get("ShipStaticAndVoyageRelatedData") or {}
+
+        name = (
+            part_a.get("ShipName")
+            or meta.get("ShipName", "")
+        ).strip()
+        imo = voyage.get("ImoNumber") or 0
+        dest = voyage.get("Destination", "").strip()
+        draught = voyage.get("MaximumStaticDraught") or 0
+        ship_type = (
+            part_b.get("ShipType")
+            or voyage.get("TypeOfShipAndCargoType")
+            or meta.get("ShipType", 0)
+        )
+
+        if not name and not imo:
+            return None  # nothing useful
+
+        return {
+            "mmsi": meta["MMSI"],
+            "name": name,
+            "imo": imo,
+            "destination": dest,
+            "draught": draught,
+            "ship_type": ship_type,
+            "flag": meta.get("MMSI_CountryCode", ""),
+            "_static": True,  # marker so backend can upsert without overwriting position
+        }
+    except (KeyError, TypeError):
+        return None
+
+
 async def run():
     if make_producer is None:
         raise RuntimeError(
@@ -61,38 +112,87 @@ async def run():
         )
     producer = make_producer()
     api_key = os.environ["AISSTREAM_API_KEY"]
+    # Only APIKey + BoundingBoxes — no FilterMessageTypes.
+    # AISStream drops connections immediately if it doesn't recognise a filter value.
+    # We filter client-side by MessageType instead.
     subscribe_msg = json.dumps({
         "APIKey": api_key,
         "BoundingBoxes": [[
             [HORMUZ_BBOX["min_lat"], HORMUZ_BBOX["min_lon"]],
             [HORMUZ_BBOX["max_lat"], HORMUZ_BBOX["max_lon"]],
         ]],
-        "FilterMessageTypes": ["PositionReport"],
     })
-    backoff = 1
+    log.info("AISStream API key: %s…%s", api_key[:6], api_key[-4:])
+    backoff = 30          # start at 30s — not 2s
+    consecutive_fast_fails = 0
     try:
         while True:
+            connect_time = asyncio.get_event_loop().time()
             try:
-                log.info("Connecting to AISStream for Hormuz bbox…")
-                async with websockets.connect(AIS_WS_URL) as ws:
+                log.info("Connecting to AISStream…")
+                ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+                async with websockets.connect(AIS_WS_URL, ssl=ssl_ctx) as ws:
                     await ws.send(subscribe_msg)
-                    backoff = 1
+                    msgs_received = 0
                     async for raw_msg in ws:
                         try:
                             msg = json.loads(raw_msg)
                         except json.JSONDecodeError:
-                            log.warning("Malformed message from AISStream, skipping")
                             continue
-                        pos = parse_position(msg)
-                        if pos:
-                            producer.send(TOPIC, pos)
+                        msgs_received += 1
+                        if msgs_received == 1:
+                            log.info("AISStream connected and receiving data.")
+                        elif msgs_received == 50:
+                            # 50 messages ≈ 1–2 min of real data — connection is genuinely
+                            # stable; resetting on msg 1 caused a fresh reconnect storm
+                            # after each rate-limit window because AISStream would accept
+                            # the socket just long enough to send one frame.
+                            backoff = 30
+                            consecutive_fast_fails = 0
+                            log.info("AISStream: connection stable — backoff reset.")
+                        msg_type = msg.get("MessageType", "")
+                        if msg_type in ("ShipStaticAndVoyageRelatedData", "StaticDataReport"):
+                            static = parse_static(msg)
+                            if static:
+                                producer.send(TOPIC, static)
+                        else:
+                            pos = parse_position(msg)
+                            if pos:
+                                producer.send(TOPIC, pos)
             except Exception as exc:
-                log.warning("AISStream disconnected: %s — reconnecting in %ds", exc, backoff)
+                elapsed = asyncio.get_event_loop().time() - connect_time
+                exc_str = str(exc)
+                if "429" in exc_str or "too many requests" in exc_str.lower():
+                    # Explicit rate-limit — jump straight to max backoff
+                    consecutive_fast_fails += 1
+                    backoff = 3600
+                    log.error(
+                        "AISStream: HTTP 429 rate limit (attempt %d). "
+                        "Waiting 60 min — do not restart the process.",
+                        consecutive_fast_fails,
+                    )
+                elif elapsed < 30:
+                    consecutive_fast_fails += 1
+                    if consecutive_fast_fails >= 3:
+                        log.error(
+                            "AISStream: %d consecutive fast disconnects — likely rate-limited. "
+                            "Waiting %ds. Do not restart.",
+                            consecutive_fast_fails, backoff,
+                        )
+                    else:
+                        log.warning("AISStream fast disconnect (%ds): %s", int(elapsed), exc)
+                else:
+                    log.warning("AISStream disconnected after %ds: %s", int(elapsed), exc)
+                log.info("Reconnecting in %ds…", backoff)
                 await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 60)
+                if "429" not in exc_str:
+                    backoff = min(backoff * 2, 3600)  # cap at 1 hour
     finally:
-        producer.flush()
-        producer.close()
+        try:
+            producer.flush()
+            producer.close()
+        except Exception as e:
+            log.warning("Producer cleanup error (non-fatal): %s", e)
 
 
 if __name__ == "__main__":
