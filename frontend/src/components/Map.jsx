@@ -81,7 +81,7 @@ function buildTrailsGeoJSON(historyMap) {
   return { type: "FeatureCollection", features };
 }
 
-export function Map({ vessels, onVesselClick }) {
+export function Map({ vessels, onVesselClick, onMapReady }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const trailHistoryRef = useRef({});  // mmsi → [{lat,lon,category}, ...]
@@ -97,6 +97,8 @@ export function Map({ vessels, onVesselClick }) {
 
     map.on("load", () => {
       // Reference overlays
+      if (onMapReady) onMapReady(map);
+
       map.addSource("tanker-lanes", { type: "geojson", data: "/reference-data/geofences/tanker_lanes.geojson" });
       map.addLayer({ id: "tanker-lanes", type: "line", source: "tanker-lanes",
         paint: { "line-color": "#00d4ff", "line-width": 1.5, "line-opacity": 0.5, "line-dasharray": [6, 3] } });
@@ -181,7 +183,10 @@ export function Map({ vessels, onVesselClick }) {
       });
     });
 
-    return () => map.remove();
+    return () => {
+      if (onMapReady) onMapReady(null);
+      map.remove();
+    };
   }, []);
 
   // Update vessels + trails when vessels prop changes
