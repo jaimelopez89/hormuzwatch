@@ -462,42 +462,56 @@ async def stream_briefing_tokens():
 
 # ── Kafka consumer background thread ───────────────────────────────────────
 
+def _parse_inner(value: dict) -> dict:
+    """Flink wraps domain objects as JSON in IntelligenceEvent.description."""
+    desc = value.get("description", "")
+    if isinstance(desc, str) and desc.startswith("{"):
+        try:
+            return json.loads(desc)
+        except Exception:
+            pass
+    return value
+
+
 def kafka_listener():
     consumer = make_consumer(
         ["ais-positions", "intelligence-events", "briefings", "market-ticks"],
         "hormuzwatch-backend",
     )
     for msg in consumer:
-        topic, value = msg.topic, msg.value
-        if topic == "ais-positions":
-            state.update_vessel(value)
-            state.touch_source(value.get("_source", "aisstream"))
-            try:
-                from replay import record_position
-                record_position(value)
-            except Exception:
-                pass
-        elif topic == "intelligence-events":
-            ev_type = value.get("type", "")
-            if ev_type == "HEATMAP_CELL":
-                state.update_heatmap(value)
-            elif ev_type == "TRAJECTORY_PREDICTION":
-                state.update_prediction(value)
-            elif ev_type == "FLEET_EDGE":
-                state.update_fleet_edge(value)
-            elif ev_type == "THROUGHPUT_SNAPSHOT":
-                state.update_throughput(value)
-            else:
-                state.add_event(value)
-        elif topic == "briefings":
-            state.set_briefing(value)
-            state.touch_source("synthesizer")
-        elif topic == "market-ticks":
-            state.update_market(value)
-            src = "prediction_mkts" if value.get("market_type") == "prediction" else "markets"
-            state.touch_source(src)
-        elif topic == "portwatch-data":
-            state.set_portwatch(value)
+        try:
+            topic, value = msg.topic, msg.value
+            if topic == "ais-positions":
+                state.update_vessel(value)
+                state.touch_source(value.get("_source", "aisstream"))
+                try:
+                    from replay import record_position
+                    record_position(value)
+                except Exception:
+                    pass
+            elif topic == "intelligence-events":
+                ev_type = value.get("type", "")
+                if ev_type == "HEATMAP_CELL":
+                    state.update_heatmap(_parse_inner(value))
+                elif ev_type == "TRAJECTORY_PREDICTION":
+                    state.update_prediction(_parse_inner(value))
+                elif ev_type == "FLEET_EDGE":
+                    state.update_fleet_edge(_parse_inner(value))
+                elif ev_type == "THROUGHPUT_SNAPSHOT":
+                    state.update_throughput(_parse_inner(value))
+                else:
+                    state.add_event(value)
+            elif topic == "briefings":
+                state.set_briefing(value)
+                state.touch_source("synthesizer")
+            elif topic == "market-ticks":
+                state.update_market(value)
+                src = "prediction_mkts" if value.get("market_type") == "prediction" else "markets"
+                state.touch_source(src)
+            elif topic == "portwatch-data":
+                state.set_portwatch(value)
+        except Exception as exc:
+            log.error("kafka_listener: error processing %s message: %s", topic if 'topic' in dir() else "?", exc)
 
 
 if __name__ == "__main__":

@@ -281,15 +281,23 @@ class AppState:
             return list(self.risk_history)
 
     def update_heatmap(self, cell: dict):
+        key = cell.get("cellId") or f"{cell.get('lat', 0):.2f}_{cell.get('lon', 0):.2f}"
         with self._lock:
-            self.heatmap[cell["cellId"]] = cell
+            self.heatmap[key] = cell
 
     def update_prediction(self, pred: dict):
+        mmsi = pred.get("mmsi")
+        if mmsi is None:
+            return
         with self._lock:
-            self.predictions[str(pred["mmsi"])] = pred
+            self.predictions[str(mmsi)] = pred
 
     def update_fleet_edge(self, edge: dict):
-        key = f"{edge['sourceMmsi']}:{edge['targetMmsi']}"
+        src = edge.get("sourceMmsi")
+        tgt = edge.get("targetMmsi")
+        if src is None or tgt is None:
+            return
+        key = f"{src}:{tgt}"
         with self._lock:
             existing = self.fleet_graph.get(key, {})
             edge["proximityCount"] = max(edge.get("proximityCount", 1),
@@ -297,8 +305,9 @@ class AppState:
             self.fleet_graph[key] = edge
 
     def update_throughput(self, snap: dict):
+        key = snap.get("date") or snap.get("timestamp", "unknown")
         with self._lock:
-            self.throughput[snap["date"]] = snap
+            self.throughput[key] = snap
 
     def get_heatmap(self) -> list:
         with self._lock:
