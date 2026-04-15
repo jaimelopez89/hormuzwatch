@@ -97,6 +97,11 @@ async def lifespan(app: FastAPI):
     pw_thread.start()
     rh_thread = threading.Thread(target=_risk_history_recorder, daemon=True)
     rh_thread.start()
+    # Weather poller — ECMWF via Open-Meteo, no API key needed
+    from weather_poller import run as _run_weather, poll_once as _wx_poll_once
+    _wx_poll_once(state)   # seed immediately so /api/weather works on first request
+    threading.Thread(target=_run_weather, args=(state,), daemon=True).start()
+    log.info("Weather poller started (ECMWF via Open-Meteo).")
     # Seed first snapshot immediately
     state.record_risk_snapshot()
     yield
@@ -204,6 +209,15 @@ def get_fleet_graph():
 @app.get("/api/throughput")
 def get_throughput():
     return state.get_throughput()
+
+
+@app.get("/api/weather")
+def get_weather():
+    """Current maritime weather at the Strait of Hormuz (ECMWF via Open-Meteo)."""
+    wx = state.get_weather()
+    if wx is None:
+        return {"error": "Weather data not yet available"}
+    return wx
 
 
 @app.get("/api/geofences")

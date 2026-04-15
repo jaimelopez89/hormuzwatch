@@ -49,6 +49,9 @@ class AppState:
     # Service health tracking
     _source_last_seen: dict = field(default_factory=dict)  # source_name → timestamp
 
+    # ECMWF maritime weather at the strait centroid
+    weather: dict | None = None
+
     # Daily transit counter (our own vessel tracking)
     daily_transits: dict = field(default_factory=dict)  # date → set of mmsis
 
@@ -308,6 +311,14 @@ class AppState:
         key = snap.get("date") or snap.get("timestamp", "unknown")
         with self._lock:
             self.throughput[key] = snap
+
+    def update_weather(self, wx: dict):
+        with self._lock:
+            self.weather = wx
+
+    def get_weather(self) -> dict | None:
+        with self._lock:
+            return self.weather
 
     def get_heatmap(self) -> list:
         with self._lock:

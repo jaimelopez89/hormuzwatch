@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { BriefingPanel } from "./BriefingPanel";
 import { MarketPanel } from "./MarketPanel";
+import { WeatherWidget } from "./WeatherWidget";
 
 const TABS = [
   { id: "briefing", label: "BRIEFING" },
-  { id: "market",   label: "MARKET" },
+  { id: "market",   label: "MARKET"   },
+  { id: "weather",  label: "WEATHER"  },
 ];
 
 export function Sidebar({ briefing, market, inline = false }) {
@@ -47,6 +49,7 @@ export function Sidebar({ briefing, market, inline = false }) {
       <div className="flex-1 overflow-y-auto p-2">
         {active === "briefing" && <BriefingPanel briefing={briefing} />}
         {active === "market"   && <MarketPanel market={market} />}
+        {active === "weather"  && <WeatherWidget />}
       </div>
     </div>
   );
