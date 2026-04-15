@@ -61,3 +61,9 @@ body::after {
 /* Hide Mapbox attribution for cleaner look */
 .mapboxgl-ctrl-logo { opacity: 0.3 !important; }
 .mapboxgl-ctrl-attrib { opacity: 0.3 !important; font-size: 9px !important; }
+
+/* Header intel ticker scroll */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
