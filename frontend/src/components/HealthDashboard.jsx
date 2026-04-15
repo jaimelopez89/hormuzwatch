@@ -16,7 +16,7 @@ const STATUS_STYLE = {
   ok:      { color: "#22c55e", label: "OK",    dot: "●" },
   stale:   { color: "#f59e0b", label: "STALE", dot: "●" },
   dead:    { color: "#ef4444", label: "DEAD",  dot: "●" },
-  unknown: { color: "#374151", label: "—",     dot: "○" },
+  unknown: { color: "#64748b", label: "—",     dot: "○" },
 };
 
 function formatAge(secs) {
@@ -79,7 +79,7 @@ export function HealthDashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="font-mono text-xs" style={{ color: "#374151" }}>{formatAge(age)}</span>
+                <span className="font-mono text-xs" style={{ color: "#64748b" }}>{formatAge(age)}</span>
                 <span
                   className="font-mono text-xs font-bold px-1.5 py-0.5 rounded"
                   style={{

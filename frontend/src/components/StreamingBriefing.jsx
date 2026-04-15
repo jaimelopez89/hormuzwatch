@@ -60,7 +60,7 @@ export function StreamingBriefing() {
         {live && <span className="inline-block w-1.5 h-3 ml-0.5 align-middle animate-pulse" style={{ background: "#a78bfa" }} />}
       </div>
       {latencyMs !== null && (
-        <div className="mt-2 font-mono text-xs" style={{ color: "#374151" }}>
+        <div className="mt-2 font-mono text-xs" style={{ color: "#64748b" }}>
           generation: {latencyMs.toLocaleString()}ms
         </div>
       )}

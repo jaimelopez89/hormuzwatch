@@ -92,7 +92,7 @@ export function NLQueryPanel() {
           style={{
             background: streaming ? "#0f2a40" : "#00d4ff15",
             border: "1px solid #00d4ff33",
-            color: streaming ? "#374151" : "#00d4ff",
+            color: streaming ? "#64748b" : "#00d4ff",
             cursor: streaming ? "not-allowed" : "pointer",
           }}
         >

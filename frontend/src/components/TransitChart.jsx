@@ -100,7 +100,7 @@ export function TransitChart() {
             className="font-mono text-xs px-2 py-0.5 rounded border transition-colors"
             style={{
               borderColor: view === v ? "#00d4ff" : "#0f2a40",
-              color: view === v ? "#00d4ff" : "#4a5568",
+              color: view === v ? "#00d4ff" : "#94a3b8",
               background: view === v ? "#00d4ff11" : "transparent",
             }}>
             {v}
@@ -113,14 +113,14 @@ export function TransitChart() {
           <CartesianGrid strokeDasharray="3 3" stroke="#0f2a40" vertical={false} />
           <XAxis
             dataKey="date"
-            tick={{ fill: "#4a5568", fontSize: 9, fontFamily: "JetBrains Mono" }}
+            tick={{ fill: "#94a3b8", fontSize: 9, fontFamily: "JetBrains Mono" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v) => v?.slice(5) || ""} // MM-DD
             interval={view === "90d" ? 6 : 30}
           />
           <YAxis
-            tick={{ fill: "#4a5568", fontSize: 9, fontFamily: "JetBrains Mono" }}
+            tick={{ fill: "#94a3b8", fontSize: 9, fontFamily: "JetBrains Mono" }}
             tickLine={false}
             axisLine={false}
           />

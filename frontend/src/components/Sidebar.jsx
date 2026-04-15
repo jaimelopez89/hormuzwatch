@@ -35,7 +35,7 @@ export function Sidebar({ briefing, market, inline = false }) {
             onClick={() => setActive(t.id)}
             className="flex-1 font-mono text-xs py-2 tracking-widest transition-colors"
             style={{
-              color: active === t.id ? "#00d4ff" : "#4a5568",
+              color: active === t.id ? "#00d4ff" : "#94a3b8",
               borderBottom: active === t.id ? "2px solid #00d4ff" : "2px solid transparent",
               background: active === t.id ? "#00d4ff0a" : "transparent",
             }}

@@ -39,7 +39,7 @@ export function FleetGraph() {
 
       const g = svg.append("g");
       const link = g.append("g").selectAll("line").data(es).enter().append("line")
-        .attr("stroke", "#1e3a5f")
+        .attr("stroke", "#334155")
         .attr("stroke-width", d => Math.min(d.count, 4));
 
       const node = g.append("g").selectAll("circle").data(ns).enter().append("circle")

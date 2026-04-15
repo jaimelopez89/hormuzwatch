@@ -55,6 +55,16 @@ const FLAG_NAMES = {
   UA:"Ukraine", US:"United States", UY:"Uruguay", VE:"Venezuela",
   VN:"Vietnam", VU:"Vanuatu", WS:"Samoa", YE:"Yemen",
   ZA:"South Africa", ZM:"Zambia", ZW:"Zimbabwe",
+  // Territories & dependencies commonly seen in AIS
+  AW:"Aruba",         BL:"Saint Barthélemy", BQ:"Bonaire/St Eustatius",
+  CC:"Cocos Islands", CW:"Curaçao",          CX:"Christmas Island",
+  FO:"Faroe Islands", GG:"Guernsey",         GL:"Greenland",
+  GP:"Guadeloupe",    HM:"Heard Island",     IM:"Isle of Man",
+  JE:"Jersey",        MF:"Saint Martin",     MQ:"Martinique",
+  NC:"New Caledonia", NF:"Norfolk Island",   PF:"French Polynesia",
+  PM:"St Pierre & Miquelon", RE:"Réunion",   SJ:"Svalbard",
+  SX:"Sint Maarten",  TF:"French S. Territories", WF:"Wallis & Futuna",
+  YT:"Mayotte",
 };
 
 function flagEmoji(code) {
@@ -181,8 +191,10 @@ export function VesselDetail({ vessel, onClose }) {
   const isMilitary = shipTypeNum === 35 || shipTypeNum === 36;
   const midCountry = getMidCountry(vessel.mmsi);
   const mid = Math.floor(mmsi / 1_000_000);
-  const ADVERSARY_MIDS = new Set([422, 273, 468, 445, 473, 425]);
-  const isAdversary = !sanctioned && ADVERSARY_MIDS.has(mid);
+  const ADVERSARY_MIDS = new Set([422, 273, 468, 445]);   // Iran, Russia, Syria, DPRK
+  const ADVERSARY_FLAGS = new Set(["IR", "RU", "SY", "KP", "YE"]);  // + Yemen (Houthi); UAE/IQ are not adversary
+  const flagCodeForAdversary = typeof vessel.flag === "string" ? vessel.flag.toUpperCase().trim() : null;
+  const isAdversary = !sanctioned && (ADVERSARY_MIDS.has(mid) || (flagCodeForAdversary && ADVERSARY_FLAGS.has(flagCodeForAdversary)));
 
   const flagCode = typeof vessel.flag === "string" && vessel.flag.length === 2
     ? vessel.flag.toUpperCase() : null;
@@ -212,7 +224,7 @@ export function VesselDetail({ vessel, onClose }) {
             {vessel.name || "UNKNOWN"}
           </div>
           {midCountry && (
-            <div className="font-mono text-xs mt-0.5" style={{ color: "#4a5568" }}>
+            <div className="font-mono text-xs mt-0.5" style={{ color: "#94a3b8" }}>
               {midCountry} registry
             </div>
           )}

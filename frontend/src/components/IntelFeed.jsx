@@ -70,7 +70,7 @@ export function IntelFeed({ fullHeight = false, compact = false, className = "" 
             className="font-mono text-xs px-2 py-0.5 rounded border transition-colors"
             style={{
               borderColor: filter === f ? (SEV_STYLE[f]?.color || "#00d4ff") : "#0f2a40",
-              color: filter === f ? (SEV_STYLE[f]?.color || "#00d4ff") : "#4a5568",
+              color: filter === f ? (SEV_STYLE[f]?.color || "#00d4ff") : "#94a3b8",
               background: filter === f ? (SEV_STYLE[f]?.bg || "#00d4ff11") : "transparent",
             }}
           >
@@ -112,7 +112,7 @@ export function IntelFeed({ fullHeight = false, compact = false, className = "" 
                       onClick={() => shareEvent(ev)}
                       title="Share this alert"
                       className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                      style={{ color: "#374151", fontSize: 10, lineHeight: 1, padding: "0 2px" }}
+                      style={{ color: "#64748b", fontSize: 10, lineHeight: 1, padding: "0 2px" }}
                     >↗</button>
                   </div>
                   <p className="text-xs text-dimtext leading-snug truncate">{ev.description}</p>

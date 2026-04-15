@@ -31,9 +31,14 @@ const ADVERSARY_MIDS = new Set([
   273,   // Russia
   468,   // Syria
   445,   // North Korea (DPRK)
-  473,   // Yemen (Houthi-controlled)
-  425,   // Iraq (significant Iranian influence)
 ]);
+
+// ISO 3166-1 alpha-2 flag codes for adversary states.
+// Catches vessels whose MMSI doesn't follow the 9-digit MID convention
+// (e.g. legacy, inland, or incorrectly formatted MMSIs) but whose flag
+// field is correctly reported by the AIS transponder.
+// UAE (AE), Iraq (IQ) are NOT adversary — UAE hosts US bases, Iraq is a partner state.
+const ADVERSARY_FLAGS = new Set(["IR", "RU", "SY", "KP", "YE"]);
 
 const TRAIL_COLORS = {
   tanker:     "#f9731666",
@@ -51,9 +56,15 @@ function vesselMid(mmsi) {
   return Math.floor(parseInt(mmsi, 10) / 1_000_000);
 }
 
-function vesselCategory(shipType, mmsi) {
+function isAdversaryVessel(mmsi, flag) {
+  if (ADVERSARY_MIDS.has(vesselMid(mmsi))) return true;
+  if (flag && ADVERSARY_FLAGS.has(String(flag).toUpperCase().trim())) return true;
+  return false;
+}
+
+function vesselCategory(shipType, mmsi, flag) {
   if (SANCTIONED_MMSIS.has(parseInt(mmsi, 10))) return "sanctioned";
-  if (ADVERSARY_MIDS.has(vesselMid(mmsi)))       return "adversary";
+  if (isAdversaryVessel(mmsi, flag))             return "adversary";
   if (shipType >= 80 && shipType <= 89) return "tanker";
   if (shipType === 35 || shipType === 36) return "military";
   if (shipType >= 70 && shipType <= 79) return "cargo";
@@ -67,17 +78,16 @@ function vesselCategory(shipType, mmsi) {
  *
  * tanker / lng  — wide oval hull, clearly a heavy commercial vessel
  * cargo         — boxy rectangular hull, container/bulk carrier silhouette
- * adversary     — wide hull with a diamond cutout mark (Iran / Russia / allies)
+ * adversary     — compact teardrop in amber (color alone signals state actor)
  * military      — narrow sharp chevron, aggressive/angular
- * other/default — slim teardrop (original shape)
+ * other/default — slim teardrop
  */
-function drawIconForCategory(category, color, glow = false) {
+function drawIconForCategory(category, color) {
   const size = 24;
   const canvas = document.createElement("canvas");
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = color;
-  if (glow) { ctx.shadowColor = color; ctx.shadowBlur = 12; }
   const cx = size / 2;
 
   if (category === "tanker" || category === "lng") {
@@ -114,24 +124,13 @@ function drawIconForCategory(category, color, glow = false) {
     ctx.fillRect(cx + 1, 16, 3, 3);
 
   } else if (category === "adversary") {
-    // Wide hull like a tanker but with a diamond warning mark — Iran / Russia / allies
+    // Compact teardrop — same compact shape as "other", amber color signals state actor.
+    // Keeping it small and clean avoids pixelation; the gold color is conspicuous enough.
     ctx.beginPath();
     ctx.moveTo(cx,      2);
-    ctx.lineTo(cx + 8,  7);
-    ctx.lineTo(cx + 9, 17);
-    ctx.lineTo(cx + 5, 22);
-    ctx.lineTo(cx - 5, 22);
-    ctx.lineTo(cx - 9, 17);
-    ctx.lineTo(cx - 8,  7);
-    ctx.closePath();
-    ctx.fill();
-    // Diamond state-actor mark
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.beginPath();
-    ctx.moveTo(cx,     10);   // top
-    ctx.lineTo(cx + 3, 14);  // right
-    ctx.lineTo(cx,     18);  // bottom
-    ctx.lineTo(cx - 3, 14);  // left
+    ctx.lineTo(cx + 5, 20);
+    ctx.lineTo(cx,     17);
+    ctx.lineTo(cx - 5, 20);
     ctx.closePath();
     ctx.fill();
 
@@ -223,8 +222,7 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
 
       // Vessel icons
       Object.entries(VESSEL_COLORS).forEach(([cat, color]) => {
-        const glow = cat === "sanctioned" || cat === "military" || cat === "adversary";
-        const img = drawIconForCategory(cat, color, glow);
+        const img = drawIconForCategory(cat, color);
         const size = 24;
         map.addImage(`vessel-${cat}`, {
           data: img.getContext("2d").getImageData(0, 0, size, size).data,
@@ -291,7 +289,7 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
     if (!map || !map.isStyleLoaded()) return;
 
     const features = vessels.map((v) => {
-      const category = vesselCategory(v.shipType || v.ship_type || 0, v.mmsi);
+      const category = vesselCategory(v.shipType || v.ship_type || 0, v.mmsi, v.flag);
 
       // Update trail history
       const key = String(v.mmsi);
@@ -332,8 +330,8 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
     { label: "Military",        color: VESSEL_COLORS.military },
     { label: "Cargo",           color: VESSEL_COLORS.cargo },
     { label: "LNG",             color: VESSEL_COLORS.lng },
-    { label: "Sanctioned",      color: VESSEL_COLORS.sanctioned, glow: true },
-    { label: "Adversary Flag",  color: VESSEL_COLORS.adversary,  glow: true },
+    { label: "Sanctioned",      color: VESSEL_COLORS.sanctioned },
+    { label: "Adversary Flag",  color: VESSEL_COLORS.adversary  },
     { label: "Other",           color: VESSEL_COLORS.other },
   ];
 
@@ -346,10 +344,10 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
           style={{ background: "#060d18cc", border: "1px solid #0f2a40", backdropFilter: "blur(4px)" }}
         >
           <span style={{ color: "#00d4ff" }}>{vessels.length} vessels</span>
-          <span style={{ color: "#374151" }}>·</span>
+          <span style={{ color: "#64748b" }}>·</span>
           <span style={{ color: "#f97316" }}>{tankers} tankers</span>
-          {military > 0 && <><span style={{ color: "#374151" }}>·</span><span style={{ color: "#ef4444" }}>{military} mil</span></>}
-          {cargo > 0 && <><span style={{ color: "#374151" }}>·</span><span style={{ color: "#7c3aed" }}>{cargo} cargo</span></>}
+          {military > 0 && <><span style={{ color: "#64748b" }}>·</span><span style={{ color: "#ef4444" }}>{military} mil</span></>}
+          {cargo > 0 && <><span style={{ color: "#64748b" }}>·</span><span style={{ color: "#7c3aed" }}>{cargo} cargo</span></>}
         </div>
       )}
 
@@ -358,7 +356,7 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
         className="absolute bottom-8 left-3 z-10 font-mono"
         style={{ background: "#060d18cc", border: "1px solid #0f2a40", backdropFilter: "blur(4px)", borderRadius: 4, padding: "6px 10px" }}
       >
-        <div style={{ color: "#374151", fontSize: 8, letterSpacing: "0.12em", marginBottom: 4 }}>VESSEL TYPE</div>
+        <div style={{ color: "#64748b", fontSize: 8, letterSpacing: "0.12em", marginBottom: 4 }}>VESSEL TYPE</div>
         {LEGEND.map(({ label, color, glow }) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
             <span style={{

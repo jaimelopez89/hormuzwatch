@@ -56,7 +56,7 @@ class AppState:
     daily_transits: dict = field(default_factory=dict)  # date → set of mmsis
 
     VESSEL_TTL = 8 * 3600          # 8 hours — keep vessels longer for better coverage
-    RISK_DECAY_PER_HOUR = 15       # score decays 15 pts/hr — resets to baseline in ~6h
+    RISK_DECAY_PER_HOUR = 6        # score decays 6 pts/hr — resets to baseline in ~16h
     RISK_BASELINE = 5
 
     def update_vessel(self, pos: dict):
@@ -101,13 +101,24 @@ class AppState:
         return vessels
 
     def get_risk(self) -> dict:
-        """Return current risk score, applying time-based decay since last event."""
+        """Return current risk score, applying time-based decay since last event.
+
+        A portwatch-derived floor prevents risk from decaying to LOW when we have
+        authoritative data that the strait is disrupted or operating below baseline.
+        """
         with self._lock:
             hours_idle = (time.time() - self._risk_last_updated) / 3600
             decayed = max(
                 self.RISK_BASELINE,
                 self.risk_score - int(hours_idle * self.RISK_DECAY_PER_HOUR),
             )
+            # Don't let risk decay below portwatch-derived floor
+            if self.portwatch:
+                pw_pct = self.portwatch.get("pct_of_baseline", 100)
+                if pw_pct < 45:    floor = 65   # DISRUPTED → maintain HIGH
+                elif pw_pct < 80:  floor = 42   # REDUCED   → maintain ELEVATED
+                else:              floor = self.RISK_BASELINE
+                decayed = max(decayed, floor)
             return {"score": decayed, "level": _risk_level(decayed)}
 
     def get_status(self) -> dict:
@@ -133,10 +144,12 @@ class AppState:
         poly_pct = None
         poly_markets = [m for m in self.polymarkets.values() if m.get("yes_probability") is not None]
         if poly_markets:
+            # yes_probability = P(closure/disruption) — "Will the strait close?"
+            # High value → more disrupted; low value → more open.
             poly_pct = max(m["yes_probability"] for m in poly_markets)
-            if poly_pct >= 70:   poly_signal = "OPEN"
+            if poly_pct >= 70:   poly_signal = "DISRUPTED"
             elif poly_pct >= 40: poly_signal = "REDUCED"
-            else:                poly_signal = "DISRUPTED"
+            else:                poly_signal = "OPEN"
 
         # Risk score signal — tertiary (only strong signal if CRITICAL)
         risk_signal = None

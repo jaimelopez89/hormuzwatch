@@ -8,8 +8,8 @@ function Metric({ label, value, unit, color = "#00d4ff" }) {
     <div className="flex flex-col items-center px-2 py-2 rounded"
       style={{ background: "#040b14", border: "1px solid #0f2a40" }}>
       <div className="font-mono text-base font-bold" style={{ color }}>{value ?? "—"}</div>
-      <div className="font-mono text-xs mt-0.5" style={{ color: "#4a5568" }}>{unit}</div>
-      <div style={{ fontFamily: "monospace", fontSize: 9, color: "#374151", marginTop: 2 }}>{label}</div>
+      <div className="font-mono text-xs mt-0.5" style={{ color: "#94a3b8" }}>{unit}</div>
+      <div style={{ fontFamily: "monospace", fontSize: 9, color: "#64748b", marginTop: 2 }}>{label}</div>
     </div>
   );
 }

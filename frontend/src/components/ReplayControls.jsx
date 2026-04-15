@@ -59,7 +59,7 @@ export function ReplayControls() {
             }}
             disabled={status === "running"}
             className="font-mono text-xs px-4 py-1.5 rounded"
-            style={{ background: "#22c55e18", border: "1px solid #22c55e44", color: status === "running" ? "#374151" : "#22c55e", cursor: status === "running" ? "not-allowed" : "pointer" }}
+            style={{ background: "#22c55e18", border: "1px solid #22c55e44", color: status === "running" ? "#475569" : "#22c55e", cursor: status === "running" ? "not-allowed" : "pointer" }}
           >PLAY</button>
           <button
             onClick={async () => {
@@ -68,7 +68,7 @@ export function ReplayControls() {
             }}
             disabled={status !== "running"}
             className="font-mono text-xs px-4 py-1.5 rounded"
-            style={{ background: "#f59e0b18", border: "1px solid #f59e0b44", color: status !== "running" ? "#374151" : "#f59e0b", cursor: status !== "running" ? "not-allowed" : "pointer" }}
+            style={{ background: "#f59e0b18", border: "1px solid #f59e0b44", color: status !== "running" ? "#475569" : "#f59e0b", cursor: status !== "running" ? "not-allowed" : "pointer" }}
           >STOP</button>
         </div>
       </div>

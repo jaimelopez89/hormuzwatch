@@ -74,7 +74,7 @@ export function Header() {
             willChange: "transform",
           }}
         >
-          <span className="font-mono text-xs px-4" style={{ color: "#4a5568", letterSpacing: "0.05em" }}>
+          <span className="font-mono text-xs px-4" style={{ color: "#94a3b8", letterSpacing: "0.05em" }}>
             {tickerText}
             &nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;
             {tickerText}
@@ -124,7 +124,7 @@ export function Header() {
 
         <div className="w-px h-4" style={{ background: "#0f2a40" }} />
 
-        <div className="font-mono text-xs tabular-nums" style={{ color: "#4a5568" }}>
+        <div className="font-mono text-xs tabular-nums" style={{ color: "#94a3b8" }}>
           {time.toUTCString().slice(5, 25)} UTC
         </div>
       </div>

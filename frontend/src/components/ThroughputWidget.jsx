@@ -32,7 +32,7 @@ export function ThroughputWidget() {
             ].map(({ label, value, color }) => (
               <div key={label} className="text-center">
                 <div className="font-mono text-lg font-bold" style={{ color }}>{value}</div>
-                <div className="font-mono text-xs" style={{ color: "#4a5568" }}>{label}</div>
+                <div className="font-mono text-xs" style={{ color: "#94a3b8" }}>{label}</div>
               </div>
             ))}
           </div>

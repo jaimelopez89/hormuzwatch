@@ -30,14 +30,14 @@ function WindArrow({ deg }) {
 function Stat({ label, value, color, sub }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <div style={{ fontFamily: "monospace", fontSize: 8, letterSpacing: "0.15em", color: "#4a5568" }}>
+      <div style={{ fontFamily: "monospace", fontSize: 8, letterSpacing: "0.15em", color: "#94a3b8" }}>
         {label}
       </div>
       <div style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 15, color: color || "#e2e8f0", lineHeight: 1 }}>
         {value}
       </div>
       {sub && (
-        <div style={{ fontFamily: "monospace", fontSize: 9, color: "#374151" }}>{sub}</div>
+        <div style={{ fontFamily: "monospace", fontSize: 9, color: "#64748b" }}>{sub}</div>
       )}
     </div>
   );
@@ -97,7 +97,7 @@ export function WeatherWidget() {
     <div className="panel flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <div className="panel-label mb-0">// Maritime Weather · Strait of Hormuz</div>
-        <div style={{ fontFamily: "monospace", fontSize: 8, color: "#1e3a5f" }}>
+        <div style={{ fontFamily: "monospace", fontSize: 8, color: "#475569" }}>
           ECMWF · {wx.updated_utc?.slice(0, 16) || ""} UTC
         </div>
       </div>
@@ -135,13 +135,13 @@ export function WeatherWidget() {
       {/* 24-h forecast chart */}
       {chartData.length > 0 && (
         <div>
-          <div style={{ fontFamily: "monospace", fontSize: 8, letterSpacing: "0.12em", color: "#1e3a5f", marginBottom: 4 }}>
+          <div style={{ fontFamily: "monospace", fontSize: 8, letterSpacing: "0.12em", color: "#475569", marginBottom: 4 }}>
             24-HOUR FORECAST (wind kt / wave m)
           </div>
           <div style={{ height: 60 }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                <XAxis dataKey="t" tick={{ fontSize: 7, fill: "#374151", fontFamily: "monospace" }}
+                <XAxis dataKey="t" tick={{ fontSize: 7, fill: "#64748b", fontFamily: "monospace" }}
                   tickLine={false} axisLine={false} interval={5} />
                 <Tooltip
                   contentStyle={{ background: "#060d18", border: "1px solid #0f2a40", borderRadius: 4, fontSize: 9, fontFamily: "monospace" }}
@@ -161,7 +161,7 @@ export function WeatherWidget() {
             {[["Wind","#00d4ff"],["Gusts","#f59e0b"],["Waves (m)","#7c3aed"]].map(([l,c]) => (
               <div key={l} className="flex items-center gap-1">
                 <span style={{ width: 12, height: 2, background: c, display: "inline-block", borderRadius: 1 }} />
-                <span style={{ fontFamily: "monospace", fontSize: 8, color: "#374151" }}>{l}</span>
+                <span style={{ fontFamily: "monospace", fontSize: 8, color: "#64748b" }}>{l}</span>
               </div>
             ))}
           </div>
