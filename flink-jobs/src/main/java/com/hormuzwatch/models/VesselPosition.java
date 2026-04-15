@@ -18,4 +18,6 @@ public class VesselPosition {
     public int shipType;
     public String flag = "";
     public String timestamp;
+    @JsonProperty("draught")
+    public double draught;
 }

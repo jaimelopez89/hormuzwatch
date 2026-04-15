@@ -10,6 +10,7 @@ const VESSEL_COLORS = {
   cargo:      "#7c3aed",
   lng:        "#06b6d4",
   sanctioned: "#ef4444",
+  adversary:  "#fbbf24",   // Iran, Russia, Syria, North Korea, Yemen — amber gold
   other:      "#64748b",
 };
 
@@ -22,19 +23,48 @@ const SANCTIONED_MMSIS = new Set([
   352002785, 636091798,
 ]);
 
+// MID prefixes (first 3 digits of MMSI) for Iran and allied/adversary states.
+// Sanctioned individual vessels are caught first by SANCTIONED_MMSIS above.
+// Priority: sanctioned → adversary flag → ship type.
+const ADVERSARY_MIDS = new Set([
+  422,   // Iran (Islamic Republic)
+  273,   // Russia
+  468,   // Syria
+  445,   // North Korea (DPRK)
+]);
+
+// ISO 3166-1 alpha-2 flag codes for adversary states.
+// Catches vessels whose MMSI doesn't follow the 9-digit MID convention
+// (e.g. legacy, inland, or incorrectly formatted MMSIs) but whose flag
+// field is correctly reported by the AIS transponder.
+// UAE (AE), Iraq (IQ) are NOT adversary — UAE hosts US bases, Iraq is a partner state.
+const ADVERSARY_FLAGS = new Set(["IR", "RU", "SY", "KP", "YE"]);
+
 const TRAIL_COLORS = {
   tanker:     "#f9731666",
   military:   "#ef444466",
   cargo:      "#7c3aed66",
   lng:        "#06b6d466",
   sanctioned: "#ef444466",
+  adversary:  "#fbbf2466",
   other:      "#64748b44",
 };
 
 const MAX_TRAIL_POINTS = 12;
 
-function vesselCategory(shipType, mmsi) {
+function vesselMid(mmsi) {
+  return Math.floor(parseInt(mmsi, 10) / 1_000_000);
+}
+
+function isAdversaryVessel(mmsi, flag) {
+  if (ADVERSARY_MIDS.has(vesselMid(mmsi))) return true;
+  if (flag && ADVERSARY_FLAGS.has(String(flag).toUpperCase().trim())) return true;
+  return false;
+}
+
+function vesselCategory(shipType, mmsi, flag) {
   if (SANCTIONED_MMSIS.has(parseInt(mmsi, 10))) return "sanctioned";
+  if (isAdversaryVessel(mmsi, flag))             return "adversary";
   if (shipType >= 80 && shipType <= 89) return "tanker";
   if (shipType === 35 || shipType === 36) return "military";
   if (shipType >= 70 && shipType <= 79) return "cargo";
@@ -42,24 +72,89 @@ function vesselCategory(shipType, mmsi) {
   return "other";
 }
 
-function drawVesselIcon(color, glow = false) {
+/**
+ * Draw a category-specific vessel icon on a 24×24 canvas.
+ * All shapes point "up" (north = bow). Mapbox rotates them by heading.
+ *
+ * tanker / lng  — wide oval hull, clearly a heavy commercial vessel
+ * cargo         — boxy rectangular hull, container/bulk carrier silhouette
+ * adversary     — compact teardrop in amber (color alone signals state actor)
+ * military      — narrow sharp chevron, aggressive/angular
+ * other/default — slim teardrop
+ */
+function drawIconForCategory(category, color) {
   const size = 24;
   const canvas = document.createElement("canvas");
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = color;
-  if (glow) {
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
+  const cx = size / 2;
+
+  if (category === "tanker" || category === "lng") {
+    // Wide oval hull — unmistakably a supertanker
+    ctx.beginPath();
+    ctx.moveTo(cx,      2);   // bow
+    ctx.lineTo(cx + 8,  7);   // fwd stbd shoulder
+    ctx.lineTo(cx + 9, 17);   // mid stbd (widest)
+    ctx.lineTo(cx + 5, 22);   // stern stbd quarter
+    ctx.lineTo(cx - 5, 22);   // stern port quarter
+    ctx.lineTo(cx - 9, 17);   // mid port (widest)
+    ctx.lineTo(cx - 8,  7);   // fwd port shoulder
+    ctx.closePath();
+    ctx.fill();
+    // Centerline superstructure mark
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillRect(cx - 1.5, 11, 3, 7);
+
+  } else if (category === "cargo") {
+    // Wide rectangular hull — container / bulk carrier
+    ctx.beginPath();
+    ctx.moveTo(cx,      3);   // bow (pointed)
+    ctx.lineTo(cx + 7,  9);   // fwd stbd shoulder
+    ctx.lineTo(cx + 7, 21);   // stern stbd
+    ctx.lineTo(cx - 7, 21);   // stern port
+    ctx.lineTo(cx - 7,  9);   // fwd port shoulder
+    ctx.closePath();
+    ctx.fill();
+    // Cargo hatch marks
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(cx - 4, 11, 3, 3);
+    ctx.fillRect(cx + 1, 11, 3, 3);
+    ctx.fillRect(cx - 4, 16, 3, 3);
+    ctx.fillRect(cx + 1, 16, 3, 3);
+
+  } else if (category === "adversary") {
+    // Compact teardrop — same compact shape as "other", amber color signals state actor.
+    // Keeping it small and clean avoids pixelation; the gold color is conspicuous enough.
+    ctx.beginPath();
+    ctx.moveTo(cx,      2);
+    ctx.lineTo(cx + 5, 20);
+    ctx.lineTo(cx,     17);
+    ctx.lineTo(cx - 5, 20);
+    ctx.closePath();
+    ctx.fill();
+
+  } else if (category === "military") {
+    // Narrow sharp chevron — naval / law enforcement
+    ctx.beginPath();
+    ctx.moveTo(cx,      1);   // bow (sharp)
+    ctx.lineTo(cx + 6, 18);   // stbd wing tip
+    ctx.lineTo(cx,     13);   // tail notch centre
+    ctx.lineTo(cx - 6, 18);   // port wing tip
+    ctx.closePath();
+    ctx.fill();
+
+  } else {
+    // Default slim teardrop — other, sanctioned
+    ctx.beginPath();
+    ctx.moveTo(cx,      2);
+    ctx.lineTo(cx + 5, 20);
+    ctx.lineTo(cx,     17);
+    ctx.lineTo(cx - 5, 20);
+    ctx.closePath();
+    ctx.fill();
   }
-  const cx = size / 2, h = size;
-  ctx.beginPath();
-  ctx.moveTo(cx, 2);
-  ctx.lineTo(cx + 5, h - 4);
-  ctx.lineTo(cx, h - 7);
-  ctx.lineTo(cx - 5, h - 4);
-  ctx.closePath();
-  ctx.fill();
+
   return canvas;
 }
 
@@ -81,7 +176,7 @@ function buildTrailsGeoJSON(historyMap) {
   return { type: "FeatureCollection", features };
 }
 
-export function Map({ vessels, onVesselClick }) {
+export function Map({ vessels, onVesselClick, onMapReady }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const trailHistoryRef = useRef({});  // mmsi → [{lat,lon,category}, ...]
@@ -96,7 +191,6 @@ export function Map({ vessels, onVesselClick }) {
     mapRef.current = map;
 
     map.on("load", () => {
-      // Reference overlays
       map.addSource("tanker-lanes", { type: "geojson", data: "/reference-data/geofences/tanker_lanes.geojson" });
       map.addLayer({ id: "tanker-lanes", type: "line", source: "tanker-lanes",
         paint: { "line-color": "#00d4ff", "line-width": 1.5, "line-opacity": 0.5, "line-dasharray": [6, 3] } });
@@ -128,8 +222,7 @@ export function Map({ vessels, onVesselClick }) {
 
       // Vessel icons
       Object.entries(VESSEL_COLORS).forEach(([cat, color]) => {
-        const glow = cat === "sanctioned" || cat === "military";
-        const img = drawVesselIcon(color, glow);
+        const img = drawIconForCategory(cat, color);
         const size = 24;
         map.addImage(`vessel-${cat}`, {
           data: img.getContext("2d").getImageData(0, 0, size, size).data,
@@ -150,6 +243,9 @@ export function Map({ vessels, onVesselClick }) {
           "icon-allow-overlap": true,
         },
       });
+
+      // Fire onMapReady after all sources, layers, and images are initialized
+      if (onMapReady) onMapReady(map);
 
       const popup = new mapboxgl.Popup({
         closeButton: false, closeOnClick: false,
@@ -181,7 +277,10 @@ export function Map({ vessels, onVesselClick }) {
       });
     });
 
-    return () => map.remove();
+    return () => {
+      if (onMapReady) onMapReady(null);
+      map.remove();
+    };
   }, []);
 
   // Update vessels + trails when vessels prop changes
@@ -190,7 +289,7 @@ export function Map({ vessels, onVesselClick }) {
     if (!map || !map.isStyleLoaded()) return;
 
     const features = vessels.map((v) => {
-      const category = vesselCategory(v.shipType || v.ship_type || 0, v.mmsi);
+      const category = vesselCategory(v.shipType || v.ship_type || 0, v.mmsi, v.flag);
 
       // Update trail history
       const key = String(v.mmsi);
@@ -227,12 +326,13 @@ export function Map({ vessels, onVesselClick }) {
   const cargo    = vessels.filter(v => { const t = v.shipType || v.ship_type || 0; return t >= 70 && t <= 79; }).length;
 
   const LEGEND = [
-    { label: "Tanker",     color: VESSEL_COLORS.tanker },
-    { label: "Military",   color: VESSEL_COLORS.military },
-    { label: "Cargo",      color: VESSEL_COLORS.cargo },
-    { label: "LNG",        color: VESSEL_COLORS.lng },
-    { label: "Sanctioned", color: VESSEL_COLORS.sanctioned, glow: true },
-    { label: "Other",      color: VESSEL_COLORS.other },
+    { label: "Tanker",          color: VESSEL_COLORS.tanker },
+    { label: "Military",        color: VESSEL_COLORS.military },
+    { label: "Cargo",           color: VESSEL_COLORS.cargo },
+    { label: "LNG",             color: VESSEL_COLORS.lng },
+    { label: "Sanctioned",      color: VESSEL_COLORS.sanctioned },
+    { label: "Adversary Flag",  color: VESSEL_COLORS.adversary  },
+    { label: "Other",           color: VESSEL_COLORS.other },
   ];
 
   return (
@@ -244,10 +344,10 @@ export function Map({ vessels, onVesselClick }) {
           style={{ background: "#060d18cc", border: "1px solid #0f2a40", backdropFilter: "blur(4px)" }}
         >
           <span style={{ color: "#00d4ff" }}>{vessels.length} vessels</span>
-          <span style={{ color: "#374151" }}>·</span>
+          <span style={{ color: "#64748b" }}>·</span>
           <span style={{ color: "#f97316" }}>{tankers} tankers</span>
-          {military > 0 && <><span style={{ color: "#374151" }}>·</span><span style={{ color: "#ef4444" }}>{military} mil</span></>}
-          {cargo > 0 && <><span style={{ color: "#374151" }}>·</span><span style={{ color: "#7c3aed" }}>{cargo} cargo</span></>}
+          {military > 0 && <><span style={{ color: "#64748b" }}>·</span><span style={{ color: "#ef4444" }}>{military} mil</span></>}
+          {cargo > 0 && <><span style={{ color: "#64748b" }}>·</span><span style={{ color: "#7c3aed" }}>{cargo} cargo</span></>}
         </div>
       )}
 
@@ -256,7 +356,7 @@ export function Map({ vessels, onVesselClick }) {
         className="absolute bottom-8 left-3 z-10 font-mono"
         style={{ background: "#060d18cc", border: "1px solid #0f2a40", backdropFilter: "blur(4px)", borderRadius: 4, padding: "6px 10px" }}
       >
-        <div style={{ color: "#374151", fontSize: 8, letterSpacing: "0.12em", marginBottom: 4 }}>VESSEL TYPE</div>
+        <div style={{ color: "#64748b", fontSize: 8, letterSpacing: "0.12em", marginBottom: 4 }}>VESSEL TYPE</div>
         {LEGEND.map(({ label, color, glow }) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
             <span style={{

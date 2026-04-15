@@ -66,11 +66,11 @@ export function IncidentTimeline() {
           <div key={date}>
             {/* Date header */}
             <div className="flex items-center gap-2 mb-2">
-              <div className="font-mono text-xs font-bold" style={{ color: "#4a5568" }}>
+              <div className="font-mono text-xs font-bold" style={{ color: "#94a3b8" }}>
                 {date === "unknown" ? "Unknown Date" : format(new Date(date), "MMMM d, yyyy")}
               </div>
               <div className="flex-1 h-px" style={{ background: "#0f2a40" }} />
-              <div className="font-mono text-xs" style={{ color: "#374151" }}>
+              <div className="font-mono text-xs" style={{ color: "#64748b" }}>
                 {dayEvents.length} event{dayEvents.length !== 1 ? "s" : ""}
               </div>
             </div>
@@ -123,11 +123,11 @@ export function IncidentTimeline() {
                           {ev.type?.replace(/_/g, " ") || "EVENT"}
                         </span>
                         {ev.mmsi && (
-                          <span className="font-mono text-xs" style={{ color: "#374151" }}>
+                          <span className="font-mono text-xs" style={{ color: "#64748b" }}>
                             MMSI {ev.mmsi}
                           </span>
                         )}
-                        <span className="font-mono text-xs ml-auto shrink-0" style={{ color: "#374151" }}>
+                        <span className="font-mono text-xs ml-auto shrink-0" style={{ color: "#64748b" }}>
                           {timeStr || timeAgo}
                         </span>
                       </div>

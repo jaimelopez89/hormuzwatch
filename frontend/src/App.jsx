@@ -10,15 +10,25 @@ import { TransitChart } from "./components/TransitChart";
 import { PolymarketWidget } from "./components/PolymarketWidget";
 import { HealthDashboard } from "./components/HealthDashboard";
 import { IncidentTimeline } from "./components/IncidentTimeline";
+import { HeatmapLayer } from "./components/HeatmapLayer";
+import { TrajectoryLayer } from "./components/TrajectoryLayer";
+import { GeofenceStudio } from "./components/GeofenceStudio";
+import { FleetGraph } from "./components/FleetGraph";
+import { NLQueryPanel } from "./components/NLQueryPanel";
+import { ThroughputWidget } from "./components/ThroughputWidget";
+import { TelemetryPanel } from "./components/TelemetryPanel";
+import { ReplayControls } from "./components/ReplayControls";
+import { StreamingBriefing } from "./components/StreamingBriefing";
 import { useVesselStream } from "./hooks/useVesselStream";
 import { useBriefingStream } from "./hooks/useBriefingStream";
 import { useMarketStream } from "./hooks/useMarketStream";
 import { useBrowserAlerts } from "./hooks/useBrowserAlerts";
 
 const TABS = [
-  { id: "map",   label: "LIVE MAP" },
-  { id: "intel", label: "INTEL FEED" },
-  { id: "data",  label: "DATA & CHARTS" },
+  { id: "map",       label: "LIVE MAP"      },
+  { id: "intel",     label: "INTEL FEED"    },
+  { id: "data",      label: "DATA & CHARTS" },
+  { id: "analytics", label: "ANALYTICS"     },
 ];
 
 export default function App() {
@@ -27,19 +37,16 @@ export default function App() {
   const market   = useMarketStream();
   const [selectedVessel, setSelectedVessel] = useState(null);
   const [tab, setTab] = useState("map");
+  const [mapInstance, setMapInstance] = useState(null);
 
   useBrowserAlerts(true);
 
   return (
-    // Root: full-height flex column, nothing scrolls at this level
     <div className="flex flex-col" style={{ height: "100dvh", background: "#030810", overflow: "hidden" }}>
       <Header />
       <ToastAlerts />
-
-      {/* Hero — compact single row */}
       <HeroStatus />
 
-      {/* Tab bar — sticky */}
       <div className="flex shrink-0 border-b" style={{ borderColor: "#0f2a40" }}>
         {TABS.map(t => (
           <button
@@ -57,25 +64,22 @@ export default function App() {
         ))}
       </div>
 
-      {/* Main content — takes all remaining space */}
       <div className="flex-1 overflow-hidden">
 
         {/* MAP TAB */}
         {tab === "map" && (
           <div className="flex h-full">
-            {/* Map fills left — breakdown badge is rendered inside Map.jsx */}
             <div className="flex-1 relative min-w-0">
-              <Map vessels={vessels} onVesselClick={setSelectedVessel} />
+              <Map vessels={vessels} onVesselClick={setSelectedVessel} onMapReady={setMapInstance} />
               <VesselDetail vessel={selectedVessel} onClose={() => setSelectedVessel(null)} />
+              {mapInstance && <HeatmapLayer map={mapInstance} />}
+              {mapInstance && <TrajectoryLayer map={mapInstance} />}
+              {mapInstance && <GeofenceStudio map={mapInstance} />}
             </div>
-
-            {/* Right sidebar */}
             <div className="flex flex-col shrink-0 overflow-hidden" style={{ width: 580, borderLeft: "1px solid #0f2a40", background: "#040b14" }}>
-              {/* Briefing + Market stacked, scrollable */}
               <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
                 <Sidebar briefing={briefing} market={market} />
               </div>
-              {/* Intel strip at bottom of sidebar */}
               <div style={{ height: 200, borderTop: "1px solid #0f2a40", flexShrink: 0 }}>
                 <IntelFeed compact />
               </div>
@@ -104,6 +108,23 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ANALYTICS TAB */}
+        {tab === "analytics" && (
+          <div className="h-full overflow-y-auto p-3 flex flex-col gap-3">
+            <NLQueryPanel />
+            <StreamingBriefing />
+            <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <FleetGraph />
+              <ThroughputWidget />
+            </div>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <TelemetryPanel />
+              <ReplayControls />
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

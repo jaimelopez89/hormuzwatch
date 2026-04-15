@@ -31,14 +31,32 @@ class AppState:
     # Risk score history — one snapshot every 5 min, 24h window
     risk_history: deque = field(default_factory=lambda: deque(maxlen=288))
 
+    # Heatmap cells — cellId → HeatmapCell dict
+    heatmap: dict = field(default_factory=dict)
+
+    # Vessel trajectory predictions — mmsi → TrajectoryPrediction dict
+    predictions: dict = field(default_factory=dict)
+
+    # Fleet graph edges — "mmsi1:mmsi2" → FleetEdge dict
+    fleet_graph: dict = field(default_factory=dict)
+
+    # Throughput snapshots — date → ThroughputSnapshot dict
+    throughput: dict = field(default_factory=dict)
+
+    # Analyst-defined geofences — id → GeofenceDefinition dict
+    geofences: dict = field(default_factory=dict)
+
     # Service health tracking
     _source_last_seen: dict = field(default_factory=dict)  # source_name → timestamp
+
+    # ECMWF maritime weather at the strait centroid
+    weather: dict | None = None
 
     # Daily transit counter (our own vessel tracking)
     daily_transits: dict = field(default_factory=dict)  # date → set of mmsis
 
     VESSEL_TTL = 8 * 3600          # 8 hours — keep vessels longer for better coverage
-    RISK_DECAY_PER_HOUR = 15       # score decays 15 pts/hr — resets to baseline in ~6h
+    RISK_DECAY_PER_HOUR = 6        # score decays 6 pts/hr — resets to baseline in ~16h
     RISK_BASELINE = 5
 
     def update_vessel(self, pos: dict):
@@ -83,13 +101,24 @@ class AppState:
         return vessels
 
     def get_risk(self) -> dict:
-        """Return current risk score, applying time-based decay since last event."""
+        """Return current risk score, applying time-based decay since last event.
+
+        A portwatch-derived floor prevents risk from decaying to LOW when we have
+        authoritative data that the strait is disrupted or operating below baseline.
+        """
         with self._lock:
             hours_idle = (time.time() - self._risk_last_updated) / 3600
             decayed = max(
                 self.RISK_BASELINE,
                 self.risk_score - int(hours_idle * self.RISK_DECAY_PER_HOUR),
             )
+            # Don't let risk decay below portwatch-derived floor
+            if self.portwatch:
+                pw_pct = self.portwatch.get("pct_of_baseline", 100)
+                if pw_pct < 45:    floor = 65   # DISRUPTED → maintain HIGH
+                elif pw_pct < 80:  floor = 42   # REDUCED   → maintain ELEVATED
+                else:              floor = self.RISK_BASELINE
+                decayed = max(decayed, floor)
             return {"score": decayed, "level": _risk_level(decayed)}
 
     def get_status(self) -> dict:
@@ -115,10 +144,12 @@ class AppState:
         poly_pct = None
         poly_markets = [m for m in self.polymarkets.values() if m.get("yes_probability") is not None]
         if poly_markets:
+            # yes_probability = P(closure/disruption) — "Will the strait close?"
+            # High value → more disrupted; low value → more open.
             poly_pct = max(m["yes_probability"] for m in poly_markets)
-            if poly_pct >= 70:   poly_signal = "OPEN"
+            if poly_pct >= 70:   poly_signal = "DISRUPTED"
             elif poly_pct >= 40: poly_signal = "REDUCED"
-            else:                poly_signal = "DISRUPTED"
+            else:                poly_signal = "OPEN"
 
         # Risk score signal — tertiary (only strong signal if CRITICAL)
         risk_signal = None
@@ -264,6 +295,77 @@ class AppState:
     def get_risk_history(self) -> list:
         with self._lock:
             return list(self.risk_history)
+
+    def update_heatmap(self, cell: dict):
+        key = cell.get("cellId") or f"{cell.get('lat', 0):.2f}_{cell.get('lon', 0):.2f}"
+        with self._lock:
+            self.heatmap[key] = cell
+
+    def update_prediction(self, pred: dict):
+        mmsi = pred.get("mmsi")
+        if mmsi is None:
+            return
+        with self._lock:
+            self.predictions[str(mmsi)] = pred
+
+    def update_fleet_edge(self, edge: dict):
+        src = edge.get("sourceMmsi")
+        tgt = edge.get("targetMmsi")
+        if src is None or tgt is None:
+            return
+        key = f"{src}:{tgt}"
+        with self._lock:
+            existing = self.fleet_graph.get(key, {})
+            edge["proximityCount"] = max(edge.get("proximityCount", 1),
+                                         existing.get("proximityCount", 0))
+            self.fleet_graph[key] = edge
+
+    def update_throughput(self, snap: dict):
+        key = snap.get("date") or snap.get("timestamp", "unknown")
+        with self._lock:
+            self.throughput[key] = snap
+
+    def update_weather(self, wx: dict):
+        with self._lock:
+            self.weather = wx
+
+    def get_weather(self) -> dict | None:
+        with self._lock:
+            return self.weather
+
+    def get_heatmap(self) -> list:
+        with self._lock:
+            return list(self.heatmap.values())
+
+    def get_predictions(self) -> list:
+        with self._lock:
+            return list(self.predictions.values())
+
+    def get_fleet_graph(self) -> dict:
+        """Return {nodes: [...], edges: [...]} for D3 force-directed."""
+        with self._lock:
+            edges = list(self.fleet_graph.values())
+        mmsis = set()
+        for e in edges:
+            mmsis.add(e["sourceMmsi"])
+            mmsis.add(e["targetMmsi"])
+        nodes = [{"id": m} for m in mmsis]
+        return {"nodes": nodes, "edges": edges}
+
+    def get_throughput(self) -> list:
+        with self._lock:
+            return sorted(self.throughput.values(), key=lambda x: x.get("date", ""))
+
+    def set_geofence(self, gf: dict):
+        with self._lock:
+            if gf.get("active", True):
+                self.geofences[gf["id"]] = gf
+            else:
+                self.geofences.pop(gf["id"], None)
+
+    def get_geofences(self) -> list:
+        with self._lock:
+            return list(self.geofences.values())
 
     def stats(self) -> dict:
         now = time.time()

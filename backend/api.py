@@ -9,11 +9,12 @@ from typing import AsyncIterator
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
+import replay as _replay
 from kafka_utils import make_consumer, make_producer
 from state import state
 
@@ -96,6 +97,11 @@ async def lifespan(app: FastAPI):
     pw_thread.start()
     rh_thread = threading.Thread(target=_risk_history_recorder, daemon=True)
     rh_thread.start()
+    # Weather poller — ECMWF via Open-Meteo, no API key needed
+    from weather_poller import run as _run_weather, poll_once as _wx_poll_once
+    _wx_poll_once(state)   # seed immediately so /api/weather works on first request
+    threading.Thread(target=_run_weather, args=(state,), daemon=True).start()
+    log.info("Weather poller started (ECMWF via Open-Meteo).")
     # Seed first snapshot immediately
     state.record_risk_snapshot()
     yield
@@ -183,6 +189,134 @@ def get_polymarket_summary():
         return {"yes_probability": None, "market": None}
     best = max(markets, key=lambda m: m.get("yes_probability", 0))
     return {"yes_probability": best["yes_probability"], "market": best}
+
+
+@app.get("/api/heatmap")
+def get_heatmap():
+    return state.get_heatmap()
+
+
+@app.get("/api/predictions")
+def get_predictions():
+    return state.get_predictions()
+
+
+@app.get("/api/fleet-graph")
+def get_fleet_graph():
+    return state.get_fleet_graph()
+
+
+@app.get("/api/throughput")
+def get_throughput():
+    return state.get_throughput()
+
+
+@app.get("/api/weather")
+def get_weather():
+    """Current maritime weather at the Strait of Hormuz (ECMWF via Open-Meteo)."""
+    wx = state.get_weather()
+    if wx is None:
+        return {"error": "Weather data not yet available"}
+    return wx
+
+
+@app.get("/api/geofences")
+def get_geofences():
+    return state.get_geofences()
+
+
+@app.post("/api/geofences")
+async def publish_geofence(request: Request):
+    """Publish a geofence definition to Kafka so Flink picks it up dynamically."""
+    gf = await request.json()
+    try:
+        from kafka_utils import make_producer
+        producer = make_producer()
+        producer.send("geofence-control", gf)
+        producer.flush()
+        producer.close()
+    except Exception:
+        pass  # continue even if Kafka unavailable
+    state.set_geofence(gf)
+    return {"status": "published", "id": gf.get("id")}
+
+
+@app.delete("/api/geofences/{gf_id}")
+async def delete_geofence(gf_id: str):
+    try:
+        from kafka_utils import make_producer
+        producer = make_producer()
+        producer.send("geofence-control", {"id": gf_id, "active": False})
+        producer.flush()
+        producer.close()
+    except Exception:
+        pass
+    state.set_geofence({"id": gf_id, "active": False})
+    return {"status": "deleted", "id": gf_id}
+
+
+@app.get("/api/telemetry")
+def get_telemetry():
+    import time as _t
+    now = _t.time()
+    with state._lock:
+        ev_count = len(state.events)
+        vessel_count = len(state.vessels)
+        sources = dict(state._source_last_seen)
+        heatmap_cells = len(state.heatmap)
+        fleet_edges = len(state.fleet_graph)
+        predictions_count = len(state.predictions)
+
+    def age(name):
+        ts = sources.get(name)
+        return round(now - ts) if ts else None
+
+    return {
+        "vessel_count": vessel_count,
+        "intel_events_per_min": ev_count,
+        "ais_messages_per_sec": None,
+        "avg_synthesis_latency_ms": None,
+        "active_topics": 4,
+        "heatmap_cells": heatmap_cells,
+        "fleet_edges": fleet_edges,
+        "predictions": predictions_count,
+        "sources": {name: {"age_s": age(name)} for name in ["aisstream", "synthesizer", "markets"]},
+        "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+    }
+
+
+@app.get("/api/query")
+async def nl_query(question: str = Query(...)):
+    """Stream a Claude-generated answer grounded in live Flink-processed state."""
+    from nl_query import stream_answer
+
+    async def gen():
+        try:
+            async for token in stream_answer(question, state):
+                yield {"data": token}
+        except Exception as e:
+            yield {"data": f"[ERROR: {e}]"}
+        yield {"event": "done", "data": ""}
+
+    return EventSourceResponse(gen())
+
+
+@app.get("/api/replay/dates")
+def replay_dates():
+    return {"dates": _replay.list_available_dates()}
+
+
+@app.post("/api/replay/start")
+async def replay_start(date: str = Query(...), speed: float = Query(default=10.0)):
+    _replay.stop_replay()
+    asyncio.create_task(_replay.run_replay(date, speed, state))
+    return {"status": "started", "date": date, "speed_x": speed}
+
+
+@app.post("/api/replay/stop")
+def replay_stop():
+    _replay.stop_replay()
+    return {"status": "stopped"}
 
 
 # ── Embed widget endpoint ───────────────────────────────────────────────────
@@ -313,7 +447,45 @@ async def stream_status():
     return EventSourceResponse(gen())
 
 
+@app.get("/stream/briefing-tokens")
+async def stream_briefing_tokens():
+    """Stream the latest briefing body word-by-word for live display effect."""
+    async def gen() -> AsyncIterator[dict]:
+        last_seen_ts = None
+        while True:
+            b = state.briefing
+            if b and b.get("generated_at") != last_seen_ts:
+                last_seen_ts = b.get("generated_at")
+                body = b.get("body", "")
+                duration_ms = b.get("synthesis_duration_ms", 0)
+                yield {"data": json.dumps({
+                    "type": "meta",
+                    "headline": b.get("headline"),
+                    "duration_ms": duration_ms,
+                    "generated_at": b.get("generated_at"),
+                })}
+                words = body.split()
+                delay = min(0.08, duration_ms / max(len(words), 1) / 1000)
+                for word in words:
+                    yield {"data": json.dumps({"type": "token", "token": word + " "})}
+                    await asyncio.sleep(delay)
+                yield {"data": json.dumps({"type": "done"})}
+            await asyncio.sleep(5)
+    return EventSourceResponse(gen())
+
+
 # ── Kafka consumer background thread ───────────────────────────────────────
+
+def _parse_inner(value: dict) -> dict:
+    """Flink wraps domain objects as JSON in IntelligenceEvent.description."""
+    desc = value.get("description", "")
+    if isinstance(desc, str) and desc.startswith("{"):
+        try:
+            return json.loads(desc)
+        except Exception:
+            pass
+    return value
+
 
 def kafka_listener():
     consumer = make_consumer(
@@ -321,21 +493,39 @@ def kafka_listener():
         "hormuzwatch-backend",
     )
     for msg in consumer:
-        topic, value = msg.topic, msg.value
-        if topic == "ais-positions":
-            state.update_vessel(value)
-            state.touch_source(value.get("_source", "aisstream"))
-        elif topic == "intelligence-events":
-            state.add_event(value)
-        elif topic == "briefings":
-            state.set_briefing(value)
-            state.touch_source("synthesizer")
-        elif topic == "market-ticks":
-            state.update_market(value)
-            src = "prediction_mkts" if value.get("market_type") == "prediction" else "markets"
-            state.touch_source(src)
-        elif topic == "portwatch-data":
-            state.set_portwatch(value)
+        try:
+            topic, value = msg.topic, msg.value
+            if topic == "ais-positions":
+                state.update_vessel(value)
+                state.touch_source(value.get("_source", "aisstream"))
+                try:
+                    from replay import record_position
+                    record_position(value)
+                except Exception:
+                    pass
+            elif topic == "intelligence-events":
+                ev_type = value.get("type", "")
+                if ev_type == "HEATMAP_CELL":
+                    state.update_heatmap(_parse_inner(value))
+                elif ev_type == "TRAJECTORY_PREDICTION":
+                    state.update_prediction(_parse_inner(value))
+                elif ev_type == "FLEET_EDGE":
+                    state.update_fleet_edge(_parse_inner(value))
+                elif ev_type == "THROUGHPUT_SNAPSHOT":
+                    state.update_throughput(_parse_inner(value))
+                else:
+                    state.add_event(value)
+            elif topic == "briefings":
+                state.set_briefing(value)
+                state.touch_source("synthesizer")
+            elif topic == "market-ticks":
+                state.update_market(value)
+                src = "prediction_mkts" if value.get("market_type") == "prediction" else "markets"
+                state.touch_source(src)
+            elif topic == "portwatch-data":
+                state.set_portwatch(value)
+        except Exception as exc:
+            log.error("kafka_listener: error processing %s message: %s", topic if 'topic' in dir() else "?", exc)
 
 
 if __name__ == "__main__":
