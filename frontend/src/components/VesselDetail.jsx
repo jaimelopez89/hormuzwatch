@@ -180,6 +180,9 @@ export function VesselDetail({ vessel, onClose }) {
   const navStatus = NAV_STATUSES[vessel.navStatus ?? vessel.nav_status] ?? NAV_STATUSES[15];
   const isMilitary = shipTypeNum === 35 || shipTypeNum === 36;
   const midCountry = getMidCountry(vessel.mmsi);
+  const mid = Math.floor(mmsi / 1_000_000);
+  const ADVERSARY_MIDS = new Set([422, 273, 468, 445, 473, 425]);
+  const isAdversary = !sanctioned && ADVERSARY_MIDS.has(mid);
 
   const flagCode = typeof vessel.flag === "string" && vessel.flag.length === 2
     ? vessel.flag.toUpperCase() : null;
@@ -195,8 +198,8 @@ export function VesselDetail({ vessel, onClose }) {
       className="absolute bottom-4 left-4 z-20 rounded"
       style={{
         background: "#060d18",
-        border: `1px solid ${sanctioned ? "#ef4444" : isMilitary ? "#f97316" : "#0f2a40"}`,
-        boxShadow: sanctioned ? "0 0 20px #ef444444" : "0 0 12px #00000066",
+        border: `1px solid ${sanctioned ? "#ef4444" : isMilitary ? "#f97316" : isAdversary ? "#fbbf24" : "#0f2a40"}`,
+        boxShadow: sanctioned ? "0 0 20px #ef444444" : isAdversary ? "0 0 16px #fbbf2433" : "0 0 12px #00000066",
         width: 290,
         padding: 14,
       }}
@@ -231,6 +234,12 @@ export function VesselDetail({ vessel, onClose }) {
         <div className="mb-2 px-2 py-1 rounded text-xs font-mono font-bold text-high"
           style={{ background: "#1a0a05", border: "1px solid #f97316" }}>
           ⚔ MILITARY / LAW ENFORCEMENT
+        </div>
+      )}
+      {isAdversary && (
+        <div className="mb-2 px-2 py-1 rounded text-xs font-mono font-bold"
+          style={{ background: "#1a1200", border: "1px solid #fbbf24", color: "#fbbf24" }}>
+          ◆ ADVERSARY-STATE FLAGGED — {midCountry || "Unknown registry"}
         </div>
       )}
 

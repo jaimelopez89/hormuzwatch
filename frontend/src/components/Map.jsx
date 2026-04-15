@@ -10,6 +10,7 @@ const VESSEL_COLORS = {
   cargo:      "#7c3aed",
   lng:        "#06b6d4",
   sanctioned: "#ef4444",
+  adversary:  "#fbbf24",   // Iran, Russia, Syria, North Korea, Yemen — amber gold
   other:      "#64748b",
 };
 
@@ -22,19 +23,37 @@ const SANCTIONED_MMSIS = new Set([
   352002785, 636091798,
 ]);
 
+// MID prefixes (first 3 digits of MMSI) for Iran and allied/adversary states.
+// Sanctioned individual vessels are caught first by SANCTIONED_MMSIS above.
+// Priority: sanctioned → adversary flag → ship type.
+const ADVERSARY_MIDS = new Set([
+  422,   // Iran (Islamic Republic)
+  273,   // Russia
+  468,   // Syria
+  445,   // North Korea (DPRK)
+  473,   // Yemen (Houthi-controlled)
+  425,   // Iraq (significant Iranian influence)
+]);
+
 const TRAIL_COLORS = {
   tanker:     "#f9731666",
   military:   "#ef444466",
   cargo:      "#7c3aed66",
   lng:        "#06b6d466",
   sanctioned: "#ef444466",
+  adversary:  "#fbbf2466",
   other:      "#64748b44",
 };
 
 const MAX_TRAIL_POINTS = 12;
 
+function vesselMid(mmsi) {
+  return Math.floor(parseInt(mmsi, 10) / 1_000_000);
+}
+
 function vesselCategory(shipType, mmsi) {
   if (SANCTIONED_MMSIS.has(parseInt(mmsi, 10))) return "sanctioned";
+  if (ADVERSARY_MIDS.has(vesselMid(mmsi)))       return "adversary";
   if (shipType >= 80 && shipType <= 89) return "tanker";
   if (shipType === 35 || shipType === 36) return "military";
   if (shipType >= 70 && shipType <= 79) return "cargo";
@@ -46,8 +65,9 @@ function vesselCategory(shipType, mmsi) {
  * Draw a category-specific vessel icon on a 24×24 canvas.
  * All shapes point "up" (north = bow). Mapbox rotates them by heading.
  *
- * tanker / lng  — wide hull, clearly a heavy commercial vessel
+ * tanker / lng  — wide oval hull, clearly a heavy commercial vessel
  * cargo         — boxy rectangular hull, container/bulk carrier silhouette
+ * adversary     — wide hull with a diamond cutout mark (Iran / Russia / allies)
  * military      — narrow sharp chevron, aggressive/angular
  * other/default — slim teardrop (original shape)
  */
@@ -92,6 +112,28 @@ function drawIconForCategory(category, color, glow = false) {
     ctx.fillRect(cx + 1, 11, 3, 3);
     ctx.fillRect(cx - 4, 16, 3, 3);
     ctx.fillRect(cx + 1, 16, 3, 3);
+
+  } else if (category === "adversary") {
+    // Wide hull like a tanker but with a diamond warning mark — Iran / Russia / allies
+    ctx.beginPath();
+    ctx.moveTo(cx,      2);
+    ctx.lineTo(cx + 8,  7);
+    ctx.lineTo(cx + 9, 17);
+    ctx.lineTo(cx + 5, 22);
+    ctx.lineTo(cx - 5, 22);
+    ctx.lineTo(cx - 9, 17);
+    ctx.lineTo(cx - 8,  7);
+    ctx.closePath();
+    ctx.fill();
+    // Diamond state-actor mark
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.beginPath();
+    ctx.moveTo(cx,     10);   // top
+    ctx.lineTo(cx + 3, 14);  // right
+    ctx.lineTo(cx,     18);  // bottom
+    ctx.lineTo(cx - 3, 14);  // left
+    ctx.closePath();
+    ctx.fill();
 
   } else if (category === "military") {
     // Narrow sharp chevron — naval / law enforcement
@@ -181,7 +223,7 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
 
       // Vessel icons
       Object.entries(VESSEL_COLORS).forEach(([cat, color]) => {
-        const glow = cat === "sanctioned" || cat === "military";
+        const glow = cat === "sanctioned" || cat === "military" || cat === "adversary";
         const img = drawIconForCategory(cat, color, glow);
         const size = 24;
         map.addImage(`vessel-${cat}`, {
@@ -286,12 +328,13 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
   const cargo    = vessels.filter(v => { const t = v.shipType || v.ship_type || 0; return t >= 70 && t <= 79; }).length;
 
   const LEGEND = [
-    { label: "Tanker",     color: VESSEL_COLORS.tanker },
-    { label: "Military",   color: VESSEL_COLORS.military },
-    { label: "Cargo",      color: VESSEL_COLORS.cargo },
-    { label: "LNG",        color: VESSEL_COLORS.lng },
-    { label: "Sanctioned", color: VESSEL_COLORS.sanctioned, glow: true },
-    { label: "Other",      color: VESSEL_COLORS.other },
+    { label: "Tanker",          color: VESSEL_COLORS.tanker },
+    { label: "Military",        color: VESSEL_COLORS.military },
+    { label: "Cargo",           color: VESSEL_COLORS.cargo },
+    { label: "LNG",             color: VESSEL_COLORS.lng },
+    { label: "Sanctioned",      color: VESSEL_COLORS.sanctioned, glow: true },
+    { label: "Adversary Flag",  color: VESSEL_COLORS.adversary,  glow: true },
+    { label: "Other",           color: VESSEL_COLORS.other },
   ];
 
   return (
