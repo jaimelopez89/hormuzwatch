@@ -16,21 +16,25 @@ import java.time.Instant;
  * STSRendezvousDetector — detects ship-to-ship (STS) transfer operations.
  *
  * A rendezvous is flagged when two tankers or cargo vessels are:
- *   - Within 0.5 nautical miles of each other
- *   - Both moving at less than 3 knots
- *   - Not in a known anchorage zone
+ *   - Within 0.3 nautical miles of each other (actual alongside distance)
+ *   - Both essentially stationary (< 0.5 knots)
+ *   - Both are commercial vessel types (tanker or cargo, ship_type 70-89)
+ *   - Not in a known anchorage or transit-waiting zone
  *   - Not moored, at anchor, or aground (navStatus 1/5/6)
- *   - No alert has fired for this pair in the last 30 minutes
+ *   - No alert has fired for this pair in the last 6 hours
+ *
+ * Tuned to avoid false positives from vessels awaiting strait passage, which
+ * cluster in the outer anchorage zones at low speed but are not doing STS.
  *
  * The stream must be keyed by grid cell (0.1° resolution) before applying this function.
  * Emits CRITICAL if one vessel has known sanctioned MMSI, HIGH otherwise.
  */
 public class STSRendezvousDetector extends KeyedProcessFunction<String, VesselPosition, IntelligenceEvent> {
 
-    private static final double RENDEZVOUS_NM = 0.5;
-    private static final double SLOW_KNOTS = 3.0;
-    private static final long COOLDOWN_MS = 30 * 60 * 1000L;   // 30 min per pair
-    private static final long ALERT_RETENTION_MS = 2 * 60 * 60 * 1000L; // clean up after 2 h
+    private static final double RENDEZVOUS_NM   = 0.3;                    // ~550 m — actual alongside distance
+    private static final double SLOW_KNOTS       = 0.5;                    // essentially stationary
+    private static final long   COOLDOWN_MS      = 6 * 60 * 60 * 1000L;   // 6 h per pair
+    private static final long   ALERT_RETENTION_MS = 12 * 60 * 60 * 1000L; // clean up after 12 h
 
     // AIS nav-status codes that indicate a stationary/berthed vessel — not a transfer operation
     // 1=At anchor, 5=Moored, 6=Aground
@@ -38,17 +42,24 @@ public class STSRendezvousDetector extends KeyedProcessFunction<String, VesselPo
     private static final int NAV_MOORED    = 5;
     private static final int NAV_AGROUND   = 6;
 
-    // Known anchorage zones (lat_center, lon_center, radius_nm)
+    // Known anchorage and transit-waiting zones (lat_center, lon_center, radius_nm).
+    // Radii are intentionally generous — ships awaiting passage cluster far offshore.
     private static final double[][] ANCHORAGES = {
-        {25.34, 55.43, 2.0},  // Fujairah anchorage
-        {26.98, 56.08, 3.0},  // Bandar Abbas
-        {26.64, 53.97, 2.0},  // Qeshm
-        {25.07, 55.13, 2.0},  // Dubai / Port Rashid
-        {24.47, 54.37, 2.5},  // Abu Dhabi
-        {25.37, 56.36, 2.0},  // Khor Fakkan
-        {23.63, 58.59, 2.5},  // Muscat / Port Sultan Qaboos
-        {26.19, 50.62, 2.0},  // Bahrain / Khalifa Bin Salman Port
-        {29.37, 47.98, 3.0},  // Kuwait anchorage
+        {25.34, 55.43, 6.0},  // Fujairah outer anchorage (very large waiting area)
+        {25.37, 56.36, 4.0},  // Khor Fakkan outer anchorage
+        {26.98, 56.08, 5.0},  // Bandar Abbas approaches
+        {26.64, 53.97, 3.0},  // Qeshm
+        {26.84, 56.42, 4.0},  // Larak Island — strait entry waiting area
+        {26.65, 55.88, 3.5},  // Hengam Island — strait passage queue
+        {26.35, 56.60, 3.0},  // Strait of Hormuz inbound lane holding
+        {25.07, 55.13, 3.0},  // Dubai / Port Rashid
+        {24.47, 54.37, 3.5},  // Abu Dhabi
+        {23.63, 58.59, 3.0},  // Muscat / Port Sultan Qaboos
+        {26.19, 50.62, 3.0},  // Bahrain / Khalifa Bin Salman Port
+        {29.37, 47.98, 4.0},  // Kuwait anchorage
+        {29.07, 48.58, 3.0},  // Mina Al Ahmadi (Kuwait)
+        {27.17, 49.67, 3.0},  // Ras Tanura (Saudi Arabia)
+        {25.27, 50.62, 3.0},  // Bahrain outer anchorage
     };
 
     // Sanctioned vessel MMSIs (IRGC-linked, OFAC-listed)
@@ -75,7 +86,13 @@ public class STSRendezvousDetector extends KeyedProcessFunction<String, VesselPo
     @Override
     public void processElement(VesselPosition pos, Context ctx,
                                Collector<IntelligenceEvent> out) throws Exception {
-        // Speed guard
+        // Only track commercial vessels (tanker=80-89, cargo=70-79).
+        // Military, fishing, pleasure craft, etc. are not doing STS cargo transfers.
+        if (!isCommercialVessel(pos.shipType)) {
+            nearbyVessels.remove(pos.mmsi);
+            return;
+        }
+        // Speed guard — must be essentially stationary
         if (pos.speed > SLOW_KNOTS) {
             nearbyVessels.remove(pos.mmsi);
             return;
@@ -178,5 +195,10 @@ public class STSRendezvousDetector extends KeyedProcessFunction<String, VesselPo
             if (GeoUtils.distanceNauticalMiles(lat, lon, a[0], a[1]) <= a[2]) return true;
         }
         return false;
+    }
+
+    /** Returns true for tanker (80-89) and cargo (70-79) vessel types. */
+    private static boolean isCommercialVessel(int shipType) {
+        return (shipType >= 70 && shipType <= 89);
     }
 }

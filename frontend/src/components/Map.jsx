@@ -42,24 +42,78 @@ function vesselCategory(shipType, mmsi) {
   return "other";
 }
 
-function drawVesselIcon(color, glow = false) {
+/**
+ * Draw a category-specific vessel icon on a 24×24 canvas.
+ * All shapes point "up" (north = bow). Mapbox rotates them by heading.
+ *
+ * tanker / lng  — wide hull, clearly a heavy commercial vessel
+ * cargo         — boxy rectangular hull, container/bulk carrier silhouette
+ * military      — narrow sharp chevron, aggressive/angular
+ * other/default — slim teardrop (original shape)
+ */
+function drawIconForCategory(category, color, glow = false) {
   const size = 24;
   const canvas = document.createElement("canvas");
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = color;
-  if (glow) {
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
+  if (glow) { ctx.shadowColor = color; ctx.shadowBlur = 12; }
+  const cx = size / 2;
+
+  if (category === "tanker" || category === "lng") {
+    // Wide oval hull — unmistakably a supertanker
+    ctx.beginPath();
+    ctx.moveTo(cx,      2);   // bow
+    ctx.lineTo(cx + 8,  7);   // fwd stbd shoulder
+    ctx.lineTo(cx + 9, 17);   // mid stbd (widest)
+    ctx.lineTo(cx + 5, 22);   // stern stbd quarter
+    ctx.lineTo(cx - 5, 22);   // stern port quarter
+    ctx.lineTo(cx - 9, 17);   // mid port (widest)
+    ctx.lineTo(cx - 8,  7);   // fwd port shoulder
+    ctx.closePath();
+    ctx.fill();
+    // Centerline superstructure mark
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillRect(cx - 1.5, 11, 3, 7);
+
+  } else if (category === "cargo") {
+    // Wide rectangular hull — container / bulk carrier
+    ctx.beginPath();
+    ctx.moveTo(cx,      3);   // bow (pointed)
+    ctx.lineTo(cx + 7,  9);   // fwd stbd shoulder
+    ctx.lineTo(cx + 7, 21);   // stern stbd
+    ctx.lineTo(cx - 7, 21);   // stern port
+    ctx.lineTo(cx - 7,  9);   // fwd port shoulder
+    ctx.closePath();
+    ctx.fill();
+    // Cargo hatch marks
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(cx - 4, 11, 3, 3);
+    ctx.fillRect(cx + 1, 11, 3, 3);
+    ctx.fillRect(cx - 4, 16, 3, 3);
+    ctx.fillRect(cx + 1, 16, 3, 3);
+
+  } else if (category === "military") {
+    // Narrow sharp chevron — naval / law enforcement
+    ctx.beginPath();
+    ctx.moveTo(cx,      1);   // bow (sharp)
+    ctx.lineTo(cx + 6, 18);   // stbd wing tip
+    ctx.lineTo(cx,     13);   // tail notch centre
+    ctx.lineTo(cx - 6, 18);   // port wing tip
+    ctx.closePath();
+    ctx.fill();
+
+  } else {
+    // Default slim teardrop — other, sanctioned
+    ctx.beginPath();
+    ctx.moveTo(cx,      2);
+    ctx.lineTo(cx + 5, 20);
+    ctx.lineTo(cx,     17);
+    ctx.lineTo(cx - 5, 20);
+    ctx.closePath();
+    ctx.fill();
   }
-  const cx = size / 2, h = size;
-  ctx.beginPath();
-  ctx.moveTo(cx, 2);
-  ctx.lineTo(cx + 5, h - 4);
-  ctx.lineTo(cx, h - 7);
-  ctx.lineTo(cx - 5, h - 4);
-  ctx.closePath();
-  ctx.fill();
+
   return canvas;
 }
 
@@ -128,7 +182,7 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
       // Vessel icons
       Object.entries(VESSEL_COLORS).forEach(([cat, color]) => {
         const glow = cat === "sanctioned" || cat === "military";
-        const img = drawVesselIcon(color, glow);
+        const img = drawIconForCategory(cat, color, glow);
         const size = 24;
         map.addImage(`vessel-${cat}`, {
           data: img.getContext("2d").getImageData(0, 0, size, size).data,

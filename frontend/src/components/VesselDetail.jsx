@@ -22,6 +22,51 @@ const NAV_STATUSES = {
   15: "Not defined",
 };
 
+// ISO 3166-1 alpha-2 → country name (common maritime registries)
+const FLAG_NAMES = {
+  AE:"UAE", AF:"Afghanistan", AG:"Antigua & Barbuda", AL:"Albania",
+  AO:"Angola", AR:"Argentina", AU:"Australia", AZ:"Azerbaijan",
+  BD:"Bangladesh", BH:"Bahrain", BJ:"Benin", BN:"Brunei", BR:"Brazil",
+  BS:"Bahamas", BZ:"Belize", CK:"Cook Islands", CM:"Cameroon",
+  CN:"China", CU:"Cuba", CV:"Cape Verde", CY:"Cyprus",
+  DE:"Germany", DJ:"Djibouti", DK:"Denmark", DZ:"Algeria",
+  EG:"Egypt", ER:"Eritrea", ES:"Spain", ET:"Ethiopia",
+  FI:"Finland", FJ:"Fiji", FR:"France", GA:"Gabon",
+  GB:"United Kingdom", GE:"Georgia", GH:"Ghana", GI:"Gibraltar",
+  GN:"Guinea", GQ:"Equatorial Guinea", GR:"Greece", GT:"Guatemala",
+  GY:"Guyana", HK:"Hong Kong", HN:"Honduras", HR:"Croatia",
+  ID:"Indonesia", IL:"Israel", IN:"India", IQ:"Iraq",
+  IR:"Iran", IS:"Iceland", IT:"Italy", JM:"Jamaica",
+  JO:"Jordan", JP:"Japan", KE:"Kenya", KH:"Cambodia",
+  KM:"Comoros", KN:"St Kitts & Nevis", KR:"South Korea", KW:"Kuwait",
+  KY:"Cayman Islands", LB:"Lebanon", LR:"Liberia", LY:"Libya",
+  MA:"Morocco", MH:"Marshall Islands", MM:"Myanmar", MT:"Malta",
+  MU:"Mauritius", MV:"Maldives", MY:"Malaysia", MZ:"Mozambique",
+  NG:"Nigeria", NI:"Nicaragua", NL:"Netherlands", NO:"Norway",
+  NZ:"New Zealand", OM:"Oman", PA:"Panama", PE:"Peru",
+  PG:"Papua New Guinea", PH:"Philippines", PK:"Pakistan", PL:"Poland",
+  PR:"Puerto Rico", PT:"Portugal", PW:"Palau", QA:"Qatar",
+  RO:"Romania", RU:"Russia", SA:"Saudi Arabia", SC:"Seychelles",
+  SD:"Sudan", SG:"Singapore", SI:"Slovenia", SK:"Slovakia",
+  SL:"Sierra Leone", SO:"Somalia", SS:"South Sudan", SV:"El Salvador",
+  SY:"Syria", TC:"Turks & Caicos", TG:"Togo", TH:"Thailand",
+  TK:"Tokelau", TN:"Tunisia", TO:"Tonga", TR:"Turkey",
+  TT:"Trinidad & Tobago", TV:"Tuvalu", TW:"Taiwan", TZ:"Tanzania",
+  UA:"Ukraine", US:"United States", UY:"Uruguay", VE:"Venezuela",
+  VN:"Vietnam", VU:"Vanuatu", WS:"Samoa", YE:"Yemen",
+  ZA:"South Africa", ZM:"Zambia", ZW:"Zimbabwe",
+};
+
+function flagEmoji(code) {
+  if (!code || code.length !== 2) return "";
+  const uc = code.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(uc)) return "";
+  return String.fromCodePoint(
+    0x1F1E6 + uc.charCodeAt(0) - 65,
+    0x1F1E6 + uc.charCodeAt(1) - 65,
+  );
+}
+
 // MID (Maritime Identification Digits) — first 3 digits of MMSI → country
 const MID_COUNTRIES = {
   201:"Albania",202:"Andorra",203:"Austria",204:"Azores/Portugal",205:"Belgium",
@@ -136,6 +181,12 @@ export function VesselDetail({ vessel, onClose }) {
   const isMilitary = shipTypeNum === 35 || shipTypeNum === 36;
   const midCountry = getMidCountry(vessel.mmsi);
 
+  const flagCode = typeof vessel.flag === "string" && vessel.flag.length === 2
+    ? vessel.flag.toUpperCase() : null;
+  const emoji = flagEmoji(flagCode);
+  const flagName = (flagCode && FLAG_NAMES[flagCode]) || midCountry || vessel.flag || "—";
+  const flagDisplay = emoji ? `${emoji}  ${flagName}` : flagName;
+
   const mtLink  = `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${vessel.mmsi}`;
   const vfLink  = `https://www.vesselfinder.com/vessels/details/${vessel.mmsi}`;
 
@@ -188,7 +239,7 @@ export function VesselDetail({ vessel, onClose }) {
         <Row label="MMSI"       value={vessel.mmsi} />
         {vessel.imo  && <Row label="IMO"  value={vessel.imo} />}
         <Row label="Type"       value={shipTypeName} />
-        <Row label="Flag"       value={vessel.flag || midCountry || "—"} />
+        <Row label="Flag"       value={flagDisplay} />
         <Row label="Status"     value={navStatus} />
         <Row label="Speed"      value={`${(vessel.speed || 0).toFixed(1)} kt`} />
         <Row label="Course"     value={`${vessel.course || 0}°`} />
