@@ -274,14 +274,13 @@ def get_telemetry():
         return round(now - ts) if ts else None
 
     return {
-        "vessel_count": vessel_count,
-        "intel_events_per_min": ev_count,
-        "ais_messages_per_sec": None,
-        "avg_synthesis_latency_ms": None,
-        "active_topics": 4,
-        "heatmap_cells": heatmap_cells,
-        "fleet_edges": fleet_edges,
-        "predictions": predictions_count,
+        "pipeline": {
+            "vessels_tracked": vessel_count,
+            "events_buffered": ev_count,
+            "heatmap_cells": heatmap_cells,
+            "fleet_edges": fleet_edges,
+            "predictions": predictions_count,
+        },
         "sources": {name: {"age_s": age(name)} for name in ["aisstream", "synthesizer", "markets"]},
         "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
     }
