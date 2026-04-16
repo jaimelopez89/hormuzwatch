@@ -3,6 +3,11 @@
 # Pollers run in background; uvicorn runs in foreground (Railway monitors it).
 set -e
 
+# Nixpacks installs packages into /opt/venv and adds it to PATH via ~/.profile,
+# but this script runs as a non-login shell so .profile is never sourced.
+# Explicitly activate the venv so python3, uvicorn, and all packages are found.
+export PATH="/opt/venv/bin:$PATH"
+
 DIR="$(cd "$(dirname "$0")" && pwd)"
 PY=$(command -v python3 || command -v python)
 PORT=${PORT:-8000}
