@@ -99,7 +99,8 @@ async def lifespan(app: FastAPI):
     rh_thread.start()
     # Weather poller — ECMWF via Open-Meteo, no API key needed
     from weather_poller import run as _run_weather, poll_once as _wx_poll_once
-    _wx_poll_once(state)   # seed immediately so /api/weather works on first request
+    # Seed in a thread so startup isn't blocked by network I/O
+    threading.Thread(target=_wx_poll_once, args=(state,), daemon=True).start()
     threading.Thread(target=_run_weather, args=(state,), daemon=True).start()
     log.info("Weather poller started (ECMWF via Open-Meteo).")
     # Seed first snapshot immediately
@@ -114,6 +115,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # ── REST endpoints ──────────────────────────────────────────────────────────
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
     return {"status": "ok"}
 
