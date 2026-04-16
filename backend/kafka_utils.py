@@ -40,13 +40,13 @@ def _get_ca_path() -> str:
     """
     global _ca_tempfile
 
-    # Mode 1: file path
+    # Mode 1: file path (local dev)
     cert_path = os.environ.get("KAFKA_CA_CERT_PATH")
     if cert_path:
         resolved = _resolve(cert_path)
-        if not os.path.exists(resolved):
-            raise RuntimeError(f"Kafka CA cert not found at {resolved!r}. Check KAFKA_CA_CERT_PATH")
-        return resolved
+        if os.path.exists(resolved):
+            return resolved
+        # File not found — fall through to KAFKA_CA_CERT (cloud deploy)
 
     # Mode 2: PEM content string → write to temp file once
     cert_pem = os.environ.get("KAFKA_CA_CERT")
