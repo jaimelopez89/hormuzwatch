@@ -58,15 +58,36 @@ def _get_ca_path() -> str:
     raise RuntimeError("Set KAFKA_CA_CERT (PEM string) or KAFKA_CA_CERT_PATH (file path).")
 
 
+def _pem_to_tmpfile(env_var: str) -> str | None:
+    pem = os.environ.get(env_var)
+    if not pem:
+        return None
+    pem = pem.replace("\\n", "\n")
+    fd, path = tempfile.mkstemp(suffix=".pem", prefix=f"kafka-{env_var.lower()}-")
+    with os.fdopen(fd, "w") as f:
+        f.write(pem)
+    return path
+
+
 def _ssl_context():
     ca_path = _get_ca_path()
     ctx = ssl.create_default_context()
     ctx.load_verify_locations(ca_path)
-    # Aiven requires mutual TLS — resolve paths only when env vars are set
-    cert_env = os.environ.get("KAFKA_SSL_CERT_PATH", "")
-    key_env = os.environ.get("KAFKA_SSL_KEY_PATH", "")
-    if cert_env and key_env:
-        ctx.load_cert_chain(certfile=_resolve(cert_env), keyfile=_resolve(key_env))
+
+    cert_path = os.environ.get("KAFKA_SSL_CERT_PATH", "")
+    key_path = os.environ.get("KAFKA_SSL_KEY_PATH", "")
+    if cert_path and key_path:
+        resolved_cert = _resolve(cert_path)
+        resolved_key = _resolve(key_path)
+        if os.path.exists(resolved_cert) and os.path.exists(resolved_key):
+            ctx.load_cert_chain(certfile=resolved_cert, keyfile=resolved_key)
+            return ctx
+
+    cert_tmp = _pem_to_tmpfile("KAFKA_SSL_CERT")
+    key_tmp = _pem_to_tmpfile("KAFKA_SSL_KEY")
+    if cert_tmp and key_tmp:
+        ctx.load_cert_chain(certfile=cert_tmp, keyfile=key_tmp)
+
     return ctx
 
 
