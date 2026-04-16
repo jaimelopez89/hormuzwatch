@@ -123,7 +123,7 @@ async def run():
         ]],
     })
     log.info("AISStream API key: %s…%s", api_key[:6], api_key[-4:])
-    backoff = 30          # start at 30s — not 2s
+    backoff = 5
     consecutive_fast_fails = 0
     try:
         while True:
@@ -131,7 +131,11 @@ async def run():
             try:
                 log.info("Connecting to AISStream…")
                 ssl_ctx = ssl.create_default_context(cafile=certifi.where())
-                async with websockets.connect(AIS_WS_URL, ssl=ssl_ctx) as ws:
+                async with websockets.connect(
+                    AIS_WS_URL, ssl=ssl_ctx,
+                    open_timeout=30, close_timeout=10,
+                    ping_interval=20, ping_timeout=20,
+                ) as ws:
                     await ws.send(subscribe_msg)
                     msgs_received = 0
                     async for raw_msg in ws:
@@ -141,15 +145,12 @@ async def run():
                             continue
                         msgs_received += 1
                         if msgs_received == 1:
-                            log.info("AISStream connected and receiving data.")
-                        elif msgs_received == 50:
-                            # 50 messages ≈ 1–2 min of real data — connection is genuinely
-                            # stable; resetting on msg 1 caused a fresh reconnect storm
-                            # after each rate-limit window because AISStream would accept
-                            # the socket just long enough to send one frame.
-                            backoff = 30
+                            log.info("AISStream connected — receiving data.")
+                            # First message = connection is real. Reset backoff.
+                            backoff = 5
                             consecutive_fast_fails = 0
-                            log.info("AISStream: connection stable — backoff reset.")
+                        if msgs_received % 500 == 0:
+                            log.info("AISStream: %d messages received.", msgs_received)
                         msg_type = msg.get("MessageType", "")
                         if msg_type in ("ShipStaticAndVoyageRelatedData", "StaticDataReport"):
                             static = parse_static(msg)
@@ -163,30 +164,23 @@ async def run():
                 elapsed = asyncio.get_event_loop().time() - connect_time
                 exc_str = str(exc)
                 if "429" in exc_str or "too many requests" in exc_str.lower():
-                    # Explicit rate-limit — jump straight to max backoff
+                    backoff = 600
+                    log.error("AISStream: HTTP 429 rate limit. Waiting %ds.", backoff)
+                elif elapsed < 5:
                     consecutive_fast_fails += 1
-                    backoff = 3600
-                    log.error(
-                        "AISStream: HTTP 429 rate limit (attempt %d). "
-                        "Waiting 60 min — do not restart the process.",
-                        consecutive_fast_fails,
+                    log.warning(
+                        "AISStream fast disconnect (%ds, attempt %d): %s",
+                        int(elapsed), consecutive_fast_fails, exc,
                     )
-                elif elapsed < 30:
-                    consecutive_fast_fails += 1
-                    if consecutive_fast_fails >= 3:
-                        log.error(
-                            "AISStream: %d consecutive fast disconnects — likely rate-limited. "
-                            "Waiting %ds. Do not restart.",
-                            consecutive_fast_fails, backoff,
-                        )
-                    else:
-                        log.warning("AISStream fast disconnect (%ds): %s", int(elapsed), exc)
+                    # Gentle backoff: 5 → 10 → 20 → 40 → 60 (cap)
+                    backoff = min(5 * (2 ** min(consecutive_fast_fails, 4)), 60)
                 else:
+                    # Connection lasted >5s — was real, just dropped. Quick retry.
+                    consecutive_fast_fails = 0
+                    backoff = 5
                     log.warning("AISStream disconnected after %ds: %s", int(elapsed), exc)
                 log.info("Reconnecting in %ds…", backoff)
                 await asyncio.sleep(backoff)
-                if "429" not in exc_str:
-                    backoff = min(backoff * 2, 3600)  # cap at 1 hour
     finally:
         try:
             producer.flush()
