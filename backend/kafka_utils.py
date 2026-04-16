@@ -49,10 +49,13 @@ def _get_ca_path() -> str:
         # File not found — fall through to KAFKA_CA_CERT (cloud deploy)
 
     # Mode 2: PEM content string → write to temp file once
+    # Railway/Vercel often store multiline env vars with literal \n instead of
+    # actual newlines — normalize before writing.
     cert_pem = os.environ.get("KAFKA_CA_CERT")
     if cert_pem:
         if _ca_tempfile and os.path.exists(_ca_tempfile):
             return _ca_tempfile
+        cert_pem = cert_pem.replace("\\n", "\n")
         fd, path = tempfile.mkstemp(suffix=".pem", prefix="kafka-ca-")
         with os.fdopen(fd, "w") as f:
             f.write(cert_pem)

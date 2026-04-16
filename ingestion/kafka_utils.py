@@ -49,6 +49,7 @@ def _get_ca_path() -> str:
     if cert_pem:
         if _ca_tempfile and os.path.exists(_ca_tempfile):
             return _ca_tempfile
+        cert_pem = cert_pem.replace("\\n", "\n")
         fd, path = tempfile.mkstemp(suffix=".pem", prefix="kafka-ca-")
         with os.fdopen(fd, "w") as f:
             f.write(cert_pem)
