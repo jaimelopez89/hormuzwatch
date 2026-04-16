@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import ssl
+import tempfile
 from kafka import KafkaProducer, KafkaConsumer
 
 # Silence kafka-python loggers.
@@ -19,6 +20,9 @@ _IDLE_MS = 9 * 60 * 1000
 # kafka_utils.py lives one level inside the project root (ingestion/, backend/, etc.)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Cache the temp file path so we only write it once per process
+_ca_tempfile: str | None = None
+
 
 def _resolve(path: str) -> str:
     """Resolve a relative path against the project root, not the CWD."""
@@ -27,10 +31,41 @@ def _resolve(path: str) -> str:
     return os.path.join(_PROJECT_ROOT, path)
 
 
+def _get_ca_path() -> str:
+    """Return path to the CA cert file.
+
+    Supports two modes:
+      1. KAFKA_CA_CERT_PATH — file path (local dev, .env points to certs/ca.pem)
+      2. KAFKA_CA_CERT      — PEM string (cloud deploy, paste cert content into env var)
+    """
+    global _ca_tempfile
+
+    # Mode 1: file path
+    cert_path = os.environ.get("KAFKA_CA_CERT_PATH")
+    if cert_path:
+        resolved = _resolve(cert_path)
+        if not os.path.exists(resolved):
+            raise RuntimeError(f"Kafka CA cert not found at {resolved!r}. Check KAFKA_CA_CERT_PATH")
+        return resolved
+
+    # Mode 2: PEM content string → write to temp file once
+    cert_pem = os.environ.get("KAFKA_CA_CERT")
+    if cert_pem:
+        if _ca_tempfile and os.path.exists(_ca_tempfile):
+            return _ca_tempfile
+        fd, path = tempfile.mkstemp(suffix=".pem", prefix="kafka-ca-")
+        with os.fdopen(fd, "w") as f:
+            f.write(cert_pem)
+        _ca_tempfile = path
+        return path
+
+    raise RuntimeError(
+        "Kafka SSL not configured. Set KAFKA_CA_CERT (PEM string) or KAFKA_CA_CERT_PATH (file path)."
+    )
+
+
 def _ssl_context():
-    ca_path = _resolve(os.environ["KAFKA_CA_CERT_PATH"])
-    if not os.path.exists(ca_path):
-        raise RuntimeError(f"Kafka CA cert not found at {ca_path!r}. Check KAFKA_CA_CERT_PATH in your .env")
+    ca_path = _get_ca_path()
     ctx = ssl.create_default_context()
     ctx.load_verify_locations(ca_path)
     # Aiven requires mutual TLS — resolve paths only when env vars are set

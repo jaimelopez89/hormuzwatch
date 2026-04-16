@@ -1,59 +1,22 @@
 #!/usr/bin/env bash
 # Railway production start script.
-# Pollers run in background; uvicorn runs in foreground (Railway monitors it).
-set -e
+# Only runs the backend API. Pollers (ingestion, news, market, synthesizer)
+# should be added as separate Railway services if needed — running 8+ Python
+# processes in a single container OOMs on Railway's default memory.
 
-# Nixpacks installs packages into /opt/venv and adds it to PATH via ~/.profile,
-# but this script runs as a non-login shell so .profile is never sourced.
-# Explicitly activate the venv so python3, uvicorn, and all packages are found.
+# Nixpacks installs into /opt/venv but only adds it to ~/.profile (login shell).
+# This script runs as non-login, so explicitly put the venv on PATH.
 export PATH="/opt/venv/bin:$PATH"
 
-DIR="$(cd "$(dirname "$0")" && pwd)"
-PY=$(command -v python3 || command -v python)
 PORT=${PORT:-8000}
 
-echo "=== HormuzWatch (Railway) starting on port $PORT ==="
+echo "=== HormuzWatch API starting on port $PORT ==="
+echo "Python: $(which python3) — $(python3 --version)"
+echo "Uvicorn: $(which uvicorn)"
 
-# Install Playwright browser if scraper is enabled
-if [ "${ENABLE_PLAYWRIGHT_SCRAPER:-false}" = "true" ]; then
-  echo "Installing Playwright Chromium..."
-  playwright install chromium --with-deps 2>/dev/null || true
-fi
-
-# ── Pollers (background) ────────────────────────────────────────────────────
-
-(cd "$DIR/ingestion" && $PY ais_connector.py) &
-echo "✓ AIS Connector"
-
-if [ "${ENABLE_PLAYWRIGHT_SCRAPER:-false}" = "true" ]; then
-  (cd "$DIR/ingestion" && $PY marinetraffic_scraper.py) &
-  echo "✓ MarineTraffic scraper"
-else
-  echo "  MarineTraffic scraper disabled (set ENABLE_PLAYWRIGHT_SCRAPER=true to enable)"
-fi
-
-(cd "$DIR/news-poller" && $PY news_poller.py) &
-echo "✓ News poller"
-
-(cd "$DIR/news-poller" && $PY market_poller.py) &
-echo "✓ Market poller"
-
-(cd "$DIR/news-poller" && $PY portwatch_poller.py) &
-echo "✓ PortWatch poller"
-
-(cd "$DIR/news-poller" && $PY polymarket_poller.py) &
-echo "✓ Polymarket poller"
-
-(cd "$DIR/news-poller" && $PY kalshi_poller.py) &
-echo "✓ Kalshi poller"
-
-(cd "$DIR/llm-synthesizer" && $PY synthesizer.py) &
-echo "✓ LLM Synthesizer"
-
-# ── Backend API (foreground — Railway health-checks this port) ───────────────
-echo "✓ Backend API on :$PORT"
 exec uvicorn api:app \
-  --app-dir "$DIR/backend" \
+  --app-dir /app/backend \
   --host 0.0.0.0 \
   --port "$PORT" \
-  --workers 1
+  --workers 1 \
+  --log-level info
