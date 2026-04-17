@@ -1,0 +1,26 @@
+name: Fetch MarineTraffic Ships
+
+on:
+  schedule:
+    - cron: "0 * * * *"  # Every hour
+  workflow_dispatch: {}    # Manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install puppeteer-extra puppeteer-extra-plugin-stealth puppeteer
+
+      - name: Scrape MarineTraffic
+        env:
+          INGEST_URL: ${{ secrets.INGEST_URL }}
+          INGEST_API_KEY: ${{ secrets.INGEST_API_KEY }}
+        run: node scripts/fetch_marinetraffic.mjs

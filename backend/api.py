@@ -120,6 +120,26 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/api/ingest/vessels")
+async def ingest_vessels(request: Request):
+    """Accept vessel positions pushed from external scrapers (GitHub Actions).
+    Protected by a simple bearer token (INGEST_API_KEY env var)."""
+    expected = os.environ.get("INGEST_API_KEY")
+    if expected:
+        auth = request.headers.get("Authorization", "")
+        if auth != f"Bearer {expected}":
+            return Response(status_code=403, content="Forbidden")
+    body = await request.json()
+    vessels = body if isinstance(body, list) else body.get("vessels", [])
+    count = 0
+    for v in vessels:
+        if v.get("mmsi") and v.get("lat") and v.get("lon"):
+            state.update_vessel(v)
+            count += 1
+    state.touch_source("marinetraffic")
+    return {"accepted": count}
+
+
 @app.get("/api/vessels")
 def get_vessels(
     min_lat: float = Query(None), max_lat: float = Query(None),
