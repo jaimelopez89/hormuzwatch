@@ -43,7 +43,7 @@ def fetch_vessels(api_key: str) -> list[dict]:
             "maxlat": BBOX["maxlat"],
             "minlon": BBOX["minlon"],
             "maxlon": BBOX["maxlon"],
-            "response": "extended",
+            "response": "simple",
             "minutesBack": 60,
         },
         headers={"Authorization": f"Bearer {api_key}"},

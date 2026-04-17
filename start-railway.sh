@@ -24,6 +24,14 @@ if [ -n "$MYSHIPTRACKING_API_KEY" ]; then
   echo "✓ MyShipTracking poller (PID $!)"
 fi
 
+if [ -n "$DATALASTIC_API_KEY" ]; then
+  (cd "$DIR/ingestion" && exec $PY datalastic_poller.py) &
+  echo "✓ Datalastic poller (PID $!)"
+fi
+
+(cd "$DIR/ingestion" && exec $PY windward_scraper.py) &
+echo "✓ Windward Insights scraper (PID $!)"
+
 (cd "$DIR/news-poller" && exec $PY news_poller.py) &
 echo "✓ News poller (PID $!)"
 

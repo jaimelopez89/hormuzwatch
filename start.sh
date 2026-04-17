@@ -40,6 +40,18 @@ else
   echo "  MyShipTracking skipped — add MYSHIPTRACKING_API_KEY to .env"
 fi
 
+# Datalastic REST poller (750 free credits)
+if [ -n "$DATALASTIC_API_KEY" ]; then
+  (cd "$DIR/ingestion" && $PY datalastic_poller.py) &
+  echo "✓ Datalastic poller (PID $!)"
+else
+  echo "  Datalastic skipped — add DATALASTIC_API_KEY to .env"
+fi
+
+# Windward Insights scraper (free, no key needed)
+(cd "$DIR/ingestion" && $PY windward_scraper.py) &
+echo "✓ Windward scraper (PID $!)"
+
 # AISHub REST poller (broader coverage — free signup at aishub.net)
 if [ -n "$AISHUB_USERNAME" ]; then
   (cd "$DIR/ingestion" && $PY aishub_poller.py) &
