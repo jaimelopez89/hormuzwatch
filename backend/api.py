@@ -103,6 +103,20 @@ async def lifespan(app: FastAPI):
     threading.Thread(target=_wx_poll_once, args=(state,), daemon=True).start()
     threading.Thread(target=_run_weather, args=(state,), daemon=True).start()
     log.info("Weather poller started (ECMWF via Open-Meteo).")
+
+    # Direct data fetchers — bypass Kafka, update state in-process.
+    # These are backup threads that ensure data flows even when Kafka is down.
+    from data_fetchers import (
+        run_market_fetcher, run_polymarket_fetcher,
+        run_news_fetcher, run_synthesizer, run_windward_scraper,
+    )
+    threading.Thread(target=run_market_fetcher, args=(state,), daemon=True).start()
+    threading.Thread(target=run_polymarket_fetcher, args=(state,), daemon=True).start()
+    threading.Thread(target=run_news_fetcher, args=(state,), daemon=True).start()
+    threading.Thread(target=run_synthesizer, args=(state,), daemon=True).start()
+    threading.Thread(target=run_windward_scraper, args=(state,), daemon=True).start()
+    log.info("Direct data fetchers started (market, polymarket, news, synthesizer, windward).")
+
     # Seed first snapshot immediately
     state.record_risk_snapshot()
     yield
