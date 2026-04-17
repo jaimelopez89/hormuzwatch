@@ -181,7 +181,10 @@ function Row({ label, value, highlight, link }) {
 export function VesselDetail({ vessel, onClose }) {
   if (!vessel) return null;
 
-  const mmsi = parseInt(vessel.mmsi, 10);
+  // Mapbox GeoJSON properties can arrive as strings — normalize numbers
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+
+  const mmsi = parseInt(vessel.mmsi, 10) || 0;
   const sanctioned = SANCTIONED_MMSIS.has(mmsi);
   const shipTypeNum = parseInt(vessel.shipType || vessel.ship_type || 0, 10);
   const shipTypeName = SHIP_TYPES[shipTypeNum]
@@ -262,12 +265,12 @@ export function VesselDetail({ vessel, onClose }) {
         <Row label="Type"       value={shipTypeName} />
         <Row label="Flag"       value={flagDisplay} />
         <Row label="Status"     value={navStatus} />
-        <Row label="Speed"      value={`${(vessel.speed || 0).toFixed(1)} kt`} />
-        <Row label="Course"     value={`${vessel.course || 0}°`} />
-        <Row label="Heading"    value={vessel.heading === 511 || !vessel.heading ? "—" : `${vessel.heading}°`} />
-        {vessel.draught && <Row label="Draught" value={`${vessel.draught} m`} />}
+        <Row label="Speed"      value={`${num(vessel.speed).toFixed(1)} kt`} />
+        <Row label="Course"     value={`${num(vessel.course)}°`} />
+        <Row label="Heading"    value={num(vessel.heading) === 511 || !vessel.heading ? "—" : `${num(vessel.heading)}°`} />
+        {vessel.draught && <Row label="Draught" value={`${num(vessel.draught)} m`} />}
         {vessel.destination && <Row label="Dest." value={vessel.destination} />}
-        <Row label="Position"   value={`${(vessel.lat || 0).toFixed(4)}°N, ${(vessel.lon || 0).toFixed(4)}°E`} />
+        <Row label="Position"   value={`${num(vessel.lat).toFixed(4)}°N, ${num(vessel.lon).toFixed(4)}°E`} />
       </div>
 
       {/* External links */}
