@@ -20,7 +20,11 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# Persian Gulf + Strait of Hormuz bounding box
+# Wider Arabian Sea / Persian Gulf region — AISStream coverage in the Gulf
+# itself is intermittent, so cast a wider net to catch approaching traffic.
+# Vessels are filtered client-side by is_in_hormuz_bbox before publishing.
+SUBSCRIBE_BBOX = {"min_lat": 10.0, "max_lat": 32.0, "min_lon": 43.0, "max_lon": 70.0}
+# Tighter box for filtering what we actually publish to Kafka
 HORMUZ_BBOX = {"min_lat": 22.0, "max_lat": 28.0, "min_lon": 54.0, "max_lon": 62.0}
 AIS_WS_URL = "wss://stream.aisstream.io/v0/stream"
 TOPIC = "ais-positions"
@@ -118,8 +122,8 @@ async def run():
     subscribe_msg = json.dumps({
         "APIKey": api_key,
         "BoundingBoxes": [[
-            [HORMUZ_BBOX["min_lat"], HORMUZ_BBOX["min_lon"]],
-            [HORMUZ_BBOX["max_lat"], HORMUZ_BBOX["max_lon"]],
+            [SUBSCRIBE_BBOX["min_lat"], SUBSCRIBE_BBOX["min_lon"]],
+            [SUBSCRIBE_BBOX["max_lat"], SUBSCRIBE_BBOX["max_lon"]],
         ]],
     })
     log.info("AISStream API key: %s…%s", api_key[:6], api_key[-4:])
@@ -136,7 +140,10 @@ async def run():
                     open_timeout=30, close_timeout=10,
                     ping_interval=20, ping_timeout=20,
                 ) as ws:
+                    log.info("WebSocket open — sending subscription…")
+                    log.debug("Subscribe payload: %s", subscribe_msg)
                     await ws.send(subscribe_msg)
+                    log.info("Subscription sent — waiting for first message…")
                     msgs_received = 0
                     async for raw_msg in ws:
                         try:

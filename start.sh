@@ -32,6 +32,14 @@ echo "✓ AIS Connector (PID $!)"
 (cd "$DIR/ingestion" && $PY marinetraffic_scraper.py) &
 echo "✓ MarineTraffic scraper (PID $!)"
 
+# MyShipTracking REST poller (fallback for AIS coverage gaps)
+if [ -n "$MYSHIPTRACKING_API_KEY" ]; then
+  (cd "$DIR/ingestion" && $PY myshiptracking_poller.py) &
+  echo "✓ MyShipTracking poller (PID $!)"
+else
+  echo "  MyShipTracking skipped — add MYSHIPTRACKING_API_KEY to .env"
+fi
+
 # AISHub REST poller (broader coverage — free signup at aishub.net)
 if [ -n "$AISHUB_USERNAME" ]; then
   (cd "$DIR/ingestion" && $PY aishub_poller.py) &

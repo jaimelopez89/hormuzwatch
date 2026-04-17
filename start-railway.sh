@@ -19,6 +19,11 @@ echo "Python: $($PY --version)"
 (cd "$DIR/ingestion" && exec $PY ais_connector.py) &
 echo "✓ AIS Connector (PID $!)"
 
+if [ -n "$MYSHIPTRACKING_API_KEY" ]; then
+  (cd "$DIR/ingestion" && exec $PY myshiptracking_poller.py) &
+  echo "✓ MyShipTracking poller (PID $!)"
+fi
+
 (cd "$DIR/news-poller" && exec $PY news_poller.py) &
 echo "✓ News poller (PID $!)"
 
