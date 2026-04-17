@@ -37,12 +37,24 @@ async function scrapeTile(page, tile) {
     }
 
     const data = JSON.parse(body);
-    if (!Array.isArray(data)) {
-      console.error(`Tile (${tile.x},${tile.y}): unexpected response type: ${typeof data}`);
+
+    // MarineTraffic may return {type:"json",data:{rows:[...]}} or a plain array
+    let ships;
+    if (Array.isArray(data)) {
+      ships = data;
+    } else if (data?.data?.rows && Array.isArray(data.data.rows)) {
+      ships = data.data.rows;
+    } else if (data?.data && Array.isArray(data.data)) {
+      ships = data.data;
+    } else {
+      // Log the structure so we can adapt
+      const keys = Object.keys(data);
+      const preview = JSON.stringify(data).slice(0, 500);
+      console.error(`Tile (${tile.x},${tile.y}): unknown response shape (keys: ${keys}): ${preview}`);
       return [];
     }
-    console.error(`Tile (${tile.x},${tile.y}): ${data.length} ships`);
-    return data;
+    console.error(`Tile (${tile.x},${tile.y}): ${ships.length} ships`);
+    return ships;
   } catch (e) {
     console.error(`Tile (${tile.x},${tile.y}): ${e.message}`);
     return [];
