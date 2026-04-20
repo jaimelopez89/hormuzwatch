@@ -234,6 +234,12 @@ def run_synthesizer(state):
                 for e in events[:15]
             ) or "No recent events."
 
+            wx = weather or {}
+            wx_str = (
+                f"wind {wx.get('wind_kt', 'N/A')} kt, waves {wx.get('wave_m', 'N/A')} m, "
+                f"Beaufort {wx.get('beaufort', 'N/A')}"
+            ) if weather else "unavailable"
+
             prompt = f"""You are a maritime intelligence analyst. Generate a concise briefing (3-5 paragraphs) about the current situation at the Strait of Hormuz.
 
 Current data:
@@ -242,7 +248,7 @@ Current data:
 - PortWatch transit flow: {status.get('portwatch_pct')}% of baseline
 - Active vessels: {status.get('active_vessels')}
 - Brent crude: ${status.get('brent_price') or 'N/A'}
-- Weather: wind {weather.get('wind_kt', 'N/A')} kt, waves {weather.get('wave_m', 'N/A')} m, Beaufort {weather.get('beaufort', 'N/A')} if weather else 'unavailable'
+- Weather: {wx_str}
 
 Recent events:
 {event_text}
@@ -329,3 +335,21 @@ def run_windward_scraper(state):
             log.warning("Windward scraper error: %s", e)
 
         time.sleep(1800)
+
+
+# ─── PortWatch periodic refresh ─────────────────────────────────────────────
+
+def run_portwatch_refresh(state):
+    """Refresh IMF PortWatch data every 6 hours.
+
+    The lifespan bootstrap fetches once at startup. This thread keeps it fresh.
+    """
+    log.info("PortWatch refresh thread started (every 6h).")
+    time.sleep(21600)  # first refresh after 6h (bootstrap already ran)
+    while True:
+        try:
+            from api import _bootstrap_portwatch
+            _bootstrap_portwatch()
+        except Exception as e:
+            log.warning("PortWatch refresh error: %s", e)
+        time.sleep(21600)

@@ -109,13 +109,15 @@ async def lifespan(app: FastAPI):
     from data_fetchers import (
         run_market_fetcher, run_polymarket_fetcher,
         run_news_fetcher, run_synthesizer, run_windward_scraper,
+        run_portwatch_refresh,
     )
     threading.Thread(target=run_market_fetcher, args=(state,), daemon=True).start()
     threading.Thread(target=run_polymarket_fetcher, args=(state,), daemon=True).start()
     threading.Thread(target=run_news_fetcher, args=(state,), daemon=True).start()
     threading.Thread(target=run_synthesizer, args=(state,), daemon=True).start()
     threading.Thread(target=run_windward_scraper, args=(state,), daemon=True).start()
-    log.info("Direct data fetchers started (market, polymarket, news, synthesizer, windward).")
+    threading.Thread(target=run_portwatch_refresh, args=(state,), daemon=True).start()
+    log.info("Direct data fetchers started (market, polymarket, news, synthesizer, windward, portwatch).")
 
     # Seed first snapshot immediately
     state.record_risk_snapshot()

@@ -273,8 +273,8 @@ class AppState:
 
         return {
             "aisstream":    {"status": status(seen.get("aisstream"),    120, 600),  "age_s": age(seen.get("aisstream"))},
-            "marinetraffic":{"status": status(seen.get("marinetraffic"),700, 1800), "age_s": age(seen.get("marinetraffic"))},
-            "portwatch":    {"status": status(seen.get("portwatch"),    25200, 86400), "age_s": age(seen.get("portwatch"))},
+            "marinetraffic":{"status": status(seen.get("marinetraffic"),5400, 9000), "age_s": age(seen.get("marinetraffic"))},
+            "portwatch":    {"status": status(seen.get("portwatch"),    43200, 172800), "age_s": age(seen.get("portwatch"))},
             "news":         {"status": status(seen.get("news"),         3600, 7200),  "age_s": age(seen.get("news"))},
             "markets":      {"status": status(seen.get("markets"),      600, 3600),   "age_s": age(seen.get("markets"))},
             "prediction_mkts":{"status": status(seen.get("prediction_mkts"), 600, 3600), "age_s": age(seen.get("prediction_mkts"))},
