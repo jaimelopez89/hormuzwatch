@@ -374,12 +374,12 @@ class AppState:
             tankers = sum(
                 1 for v in self.vessels.values()
                 if now - v.get("_ts", 0) < self.VESSEL_TTL
-                and 80 <= v.get("ship_type", 0) <= 89
+                and 80 <= int(v.get("ship_type", 0) or 0) <= 89
             )
             military = sum(
                 1 for v in self.vessels.values()
                 if now - v.get("_ts", 0) < self.VESSEL_TTL
-                and v.get("ship_type", 0) in (35, 36)
+                and int(v.get("ship_type", 0) or 0) in (35, 36)
             )
             critical = sum(1 for e in self.events if e.get("severity") == "CRITICAL")
             high = sum(1 for e in self.events if e.get("severity") == "HIGH")
