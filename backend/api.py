@@ -139,6 +139,7 @@ def health():
 @app.post("/api/ingest/vessels")
 async def ingest_vessels(request: Request):
     """Accept vessel positions pushed from external scrapers (GitHub Actions).
+    Also forwards to Kafka so Flink can process them.
     Protected by a simple bearer token (INGEST_API_KEY env var)."""
     expected = os.environ.get("INGEST_API_KEY")
     if expected:
@@ -147,11 +148,32 @@ async def ingest_vessels(request: Request):
             return Response(status_code=403, content="Forbidden")
     body = await request.json()
     vessels = body if isinstance(body, list) else body.get("vessels", [])
+
+    # Try to get a Kafka producer to forward to Flink
+    kafka_producer = None
+    try:
+        kafka_producer = make_producer()
+    except Exception:
+        pass  # Kafka unavailable — still accept into state
+
     count = 0
     for v in vessels:
         if v.get("mmsi") and v.get("lat") and v.get("lon"):
             state.update_vessel(v)
+            # Forward to Kafka → Flink picks it up for analytics
+            if kafka_producer:
+                try:
+                    kafka_producer.send("ais-positions", v)
+                except Exception:
+                    pass
             count += 1
+
+    if kafka_producer:
+        try:
+            kafka_producer.flush(5)
+        except Exception:
+            pass
+
     state.touch_source("marinetraffic")
     return {"accepted": count}
 

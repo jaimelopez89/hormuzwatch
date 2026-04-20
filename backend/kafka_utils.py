@@ -97,7 +97,7 @@ def make_consumer(topics, group_id):
     cfg = {
         "bootstrap.servers": os.environ["KAFKA_BOOTSTRAP_SERVERS"],
         "group.id": group_id,
-        "auto.offset.reset": "latest",
+        "auto.offset.reset": "earliest",
         "connections.max.idle.ms": 540000,
         "session.timeout.ms": 30000,
         "heartbeat.interval.ms": 10000,
