@@ -1,117 +1,173 @@
+"""Kafka producer/consumer using confluent-kafka (librdkafka).
+
+confluent-kafka handles SSL/mTLS more reliably than kafka-python-ng,
+particularly from cloud environments like Railway.
+
+Supports two cert modes:
+  1. File paths: KAFKA_CA_CERT_PATH, KAFKA_SSL_CERT_PATH, KAFKA_SSL_KEY_PATH (local dev)
+  2. PEM strings: KAFKA_CA_CERT, KAFKA_SSL_CERT, KAFKA_SSL_KEY (cloud deploy)
+"""
 import json
 import logging
 import os
-import ssl
 import tempfile
-from kafka import KafkaProducer, KafkaConsumer
 
-# Silence kafka-python loggers.
-# kafka.conn logs a spurious ERROR ("Socket EVENT_READ without in-flight-requests")
-# whenever the broker closes an idle TCP connection — known kafka-python 2.0.2 bug;
-# client recovers automatically. Raise to CRITICAL so it's hidden.
-logging.getLogger("kafka").setLevel(logging.WARNING)
-logging.getLogger("kafka.conn").setLevel(logging.CRITICAL)
+from confluent_kafka import Producer, Consumer, KafkaError
 
-# kafka_utils.py lives one level inside the project root (ingestion/, backend/, etc.)
+logging.getLogger("confluent_kafka").setLevel(logging.WARNING)
+log = logging.getLogger(__name__)
+
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Close idle connections client-side at 9 min (must be > request_timeout_ms 305s);
-# stays under Aiven's ~10 min broker-side idle kill.
-_IDLE_MS = 9 * 60 * 1000
+# Cache temp file paths (one per process)
+_cert_cache: dict[str, str] = {}
 
 
 def _resolve(path: str) -> str:
-    """Resolve a relative path against the project root, not the CWD."""
     if os.path.isabs(path):
         return path
     return os.path.join(_PROJECT_ROOT, path)
 
 
-# Cache the temp file path so we only write it once per process
-_ca_tempfile: str | None = None
-
-
-def _get_ca_path() -> str:
-    """Return path to the CA cert file.
-
-    Supports two modes:
-      1. KAFKA_CA_CERT_PATH — file path (local dev)
-      2. KAFKA_CA_CERT      — PEM string (cloud deploy)
-    """
-    global _ca_tempfile
-    cert_path = os.environ.get("KAFKA_CA_CERT_PATH")
-    if cert_path:
-        resolved = _resolve(cert_path)
+def _get_cert_path(path_env: str, pem_env: str) -> str | None:
+    """Return a filesystem path for a cert, from file path or PEM string."""
+    # Mode 1: file path (local dev)
+    file_path = os.environ.get(path_env)
+    if file_path:
+        resolved = _resolve(file_path)
         if os.path.exists(resolved):
             return resolved
-        # File not found — fall through to KAFKA_CA_CERT (cloud deploy)
-    cert_pem = os.environ.get("KAFKA_CA_CERT")
-    if cert_pem:
-        if _ca_tempfile and os.path.exists(_ca_tempfile):
-            return _ca_tempfile
-        cert_pem = cert_pem.replace("\\n", "\n")
-        fd, path = tempfile.mkstemp(suffix=".pem", prefix="kafka-ca-")
-        with os.fdopen(fd, "w") as f:
-            f.write(cert_pem)
-        _ca_tempfile = path
-        return path
-    raise RuntimeError("Set KAFKA_CA_CERT (PEM string) or KAFKA_CA_CERT_PATH (file path).")
 
-
-def _pem_to_tmpfile(env_var: str) -> str | None:
-    pem = os.environ.get(env_var)
+    # Mode 2: PEM string (cloud deploy)
+    pem = os.environ.get(pem_env)
     if not pem:
         return None
+
+    cache_key = pem_env
+    if cache_key in _cert_cache and os.path.exists(_cert_cache[cache_key]):
+        return _cert_cache[cache_key]
+
     pem = pem.replace("\\n", "\n")
-    fd, path = tempfile.mkstemp(suffix=".pem", prefix=f"kafka-{env_var.lower()}-")
+    fd, path = tempfile.mkstemp(suffix=".pem", prefix=f"kafka-{pem_env.lower()}-")
     with os.fdopen(fd, "w") as f:
         f.write(pem)
+    _cert_cache[cache_key] = path
     return path
 
 
-def _ssl_context():
-    ca_path = _get_ca_path()
-    ctx = ssl.create_default_context()
-    ctx.load_verify_locations(ca_path)
+def _ssl_config() -> dict:
+    """Build confluent-kafka SSL config dict."""
+    ca = _get_cert_path("KAFKA_CA_CERT_PATH", "KAFKA_CA_CERT")
+    cert = _get_cert_path("KAFKA_SSL_CERT_PATH", "KAFKA_SSL_CERT")
+    key = _get_cert_path("KAFKA_SSL_KEY_PATH", "KAFKA_SSL_KEY")
 
-    cert_path = os.environ.get("KAFKA_SSL_CERT_PATH", "")
-    key_path = os.environ.get("KAFKA_SSL_KEY_PATH", "")
-    if cert_path and key_path:
-        resolved_cert = _resolve(cert_path)
-        resolved_key = _resolve(key_path)
-        if os.path.exists(resolved_cert) and os.path.exists(resolved_key):
-            ctx.load_cert_chain(certfile=resolved_cert, keyfile=resolved_key)
-            return ctx
+    if not ca:
+        raise RuntimeError(
+            "Kafka SSL not configured. Set KAFKA_CA_CERT (PEM string) or KAFKA_CA_CERT_PATH."
+        )
 
-    cert_tmp = _pem_to_tmpfile("KAFKA_SSL_CERT")
-    key_tmp = _pem_to_tmpfile("KAFKA_SSL_KEY")
-    if cert_tmp and key_tmp:
-        ctx.load_cert_chain(certfile=cert_tmp, keyfile=key_tmp)
-
-    return ctx
+    cfg = {
+        "security.protocol": "SSL",
+        "ssl.ca.location": ca,
+    }
+    if cert:
+        cfg["ssl.certificate.location"] = cert
+    if key:
+        cfg["ssl.key.location"] = key
+    return cfg
 
 
 def make_producer():
-    return KafkaProducer(
-        bootstrap_servers=os.environ["KAFKA_BOOTSTRAP_SERVERS"].split(","),
-        security_protocol="SSL",
-        ssl_context=_ssl_context(),
-        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        compression_type="gzip",
-        linger_ms=100,
-        batch_size=16384,
-        connections_max_idle_ms=_IDLE_MS,
-    )
+    cfg = {
+        "bootstrap.servers": os.environ["KAFKA_BOOTSTRAP_SERVERS"],
+        "client.id": "hormuzwatch-backend",
+        "compression.type": "gzip",
+        "linger.ms": 100,
+        "batch.size": 16384,
+        "connections.max.idle.ms": 540000,
+        **_ssl_config(),
+    }
+
+    producer = Producer(cfg)
+    log.info("confluent-kafka Producer created (bootstrap: %s)", cfg["bootstrap.servers"])
+    return _ProducerWrapper(producer)
 
 
 def make_consumer(topics, group_id):
-    return KafkaConsumer(
-        *topics,
-        bootstrap_servers=os.environ["KAFKA_BOOTSTRAP_SERVERS"].split(","),
-        security_protocol="SSL",
-        ssl_context=_ssl_context(),
-        group_id=group_id,
-        auto_offset_reset="latest",
-        value_deserializer=lambda v: json.loads(v.decode("utf-8")),
-        connections_max_idle_ms=_IDLE_MS,
-    )
+    cfg = {
+        "bootstrap.servers": os.environ["KAFKA_BOOTSTRAP_SERVERS"],
+        "group.id": group_id,
+        "auto.offset.reset": "latest",
+        "connections.max.idle.ms": 540000,
+        "session.timeout.ms": 30000,
+        "heartbeat.interval.ms": 10000,
+        **_ssl_config(),
+    }
+
+    consumer = Consumer(cfg)
+    consumer.subscribe(topics)
+    log.info("confluent-kafka Consumer created (group: %s, topics: %s)", group_id, topics)
+    return _ConsumerWrapper(consumer)
+
+
+class _ProducerWrapper:
+    """Wrapper that mimics the kafka-python Producer.send() API."""
+
+    def __init__(self, producer: Producer):
+        self._producer = producer
+        self._poll_count = 0
+
+    def send(self, topic: str, value):
+        data = json.dumps(value).encode("utf-8") if not isinstance(value, bytes) else value
+        self._producer.produce(topic, value=data, callback=self._on_delivery)
+        self._poll_count += 1
+        if self._poll_count % 50 == 0:
+            self._producer.poll(0)
+
+    def flush(self, timeout=10):
+        self._producer.flush(timeout)
+
+    def close(self):
+        self._producer.flush(5)
+
+    @staticmethod
+    def _on_delivery(err, msg):
+        if err:
+            log.error("Kafka delivery failed: %s", err)
+
+
+class _ConsumerWrapper:
+    """Wrapper that yields messages like kafka-python's `for msg in consumer`."""
+
+    def __init__(self, consumer: Consumer):
+        self._consumer = consumer
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        while True:
+            msg = self._consumer.poll(1.0)
+            if msg is None:
+                continue
+            if msg.error():
+                if msg.error().code() == KafkaError._PARTITION_EOF:
+                    continue
+                log.error("Kafka consumer error: %s", msg.error())
+                continue
+            return _MessageWrapper(msg)
+
+    def close(self):
+        self._consumer.close()
+
+
+class _MessageWrapper:
+    """Mimics kafka-python's message object."""
+
+    def __init__(self, msg):
+        self.topic = msg.topic()
+        self._raw = msg.value()
+
+    @property
+    def value(self):
+        return json.loads(self._raw.decode("utf-8"))

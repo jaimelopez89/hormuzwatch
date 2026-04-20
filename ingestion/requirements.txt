@@ -1,4 +1,4 @@
-kafka-python-ng>=2.2.3
+confluent-kafka>=2.6.0
 websockets>=15.0
 python-dotenv==1.0.0
 certifi

@@ -1,8 +1,8 @@
 # Aggregated requirements for Railway deployment.
 # Covers backend, ingestion, news-poller, and llm-synthesizer.
 
-# Kafka (kafka-python-ng is a maintained fork; all services use it)
-kafka-python-ng>=2.2.3
+# Kafka (confluent-kafka uses librdkafka — much more reliable SSL than kafka-python)
+confluent-kafka>=2.6.0
 
 # Backend API
 fastapi==0.111.0
