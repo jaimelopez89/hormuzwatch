@@ -330,10 +330,10 @@ async def nl_query(question: str = Query(...)):
     async def gen():
         try:
             async for token in stream_answer(question, state):
-                yield {"data": token}
+                yield {"data": json.dumps({"token": token})}
         except Exception as e:
-            yield {"data": f"[ERROR: {e}]"}
-        yield {"event": "done", "data": ""}
+            yield {"data": json.dumps({"error": str(e)})}
+        yield {"data": json.dumps({"done": True})}
 
     return EventSourceResponse(gen())
 
@@ -493,11 +493,11 @@ async def stream_briefing_tokens():
             b = state.briefing
             if b and b.get("generated_at") != last_seen_ts:
                 last_seen_ts = b.get("generated_at")
-                body = b.get("body", "")
+                body = b.get("text") or b.get("body") or ""
                 duration_ms = b.get("synthesis_duration_ms", 0)
                 yield {"data": json.dumps({
                     "type": "meta",
-                    "headline": b.get("headline"),
+                    "headline": b.get("headline") or b.get("model") or "Intelligence Briefing",
                     "duration_ms": duration_ms,
                     "generated_at": b.get("generated_at"),
                 })}
