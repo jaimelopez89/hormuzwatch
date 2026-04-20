@@ -22,8 +22,13 @@ export function BriefingPanel({ briefing }) {
   return (
     <div className="panel flex flex-col gap-3">
       <div className="panel-label">// AI Situation Report</div>
-      <p className="text-sm text-bright font-semibold leading-tight">{briefing.headline}</p>
-      <p className="text-xs text-dimtext leading-relaxed">{briefing.body}</p>
+      {briefing.headline
+        ? <p className="text-sm text-bright font-semibold leading-tight">{briefing.headline}</p>
+        : null
+      }
+      <div className="text-xs text-dimtext leading-relaxed whitespace-pre-line">
+        {briefing.body || briefing.text || "No briefing content."}
+      </div>
 
       {briefing.key_drivers?.length > 0 && (
         <div className="flex flex-wrap gap-1">
