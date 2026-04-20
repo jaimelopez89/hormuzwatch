@@ -211,24 +211,87 @@ def run_news_fetcher(state):
 
 # ─── LLM Synthesizer (briefing generation) ─────────────────────────────────
 
+def _call_llm(api_key: str, prompt: str) -> str | None:
+    """Try Anthropic first, fall back to Google Gemini, then OpenAI.
+
+    Set SYNTHESIZER_PROVIDER=gemini or =openai to skip Anthropic.
+    Requires one of: ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY.
+    """
+    provider = os.environ.get("SYNTHESIZER_PROVIDER", "auto")
+
+    # ── Anthropic ──
+    if provider in ("auto", "anthropic") and os.environ.get("ANTHROPIC_API_KEY"):
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+            msg = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=800,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            log.info("Synthesizer: used Anthropic Claude Haiku.")
+            return msg.content[0].text
+        except Exception as e:
+            log.warning("Synthesizer: Anthropic failed (%s), trying fallback...", e)
+
+    # ── Google Gemini ──
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if provider in ("auto", "gemini") and gemini_key:
+        try:
+            resp = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}",
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            log.info("Synthesizer: used Google Gemini Flash.")
+            return text
+        except Exception as e:
+            log.warning("Synthesizer: Gemini failed (%s), trying fallback...", e)
+
+    # ── OpenAI ──
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if provider in ("auto", "openai") and openai_key:
+        try:
+            resp = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {openai_key}"},
+                json={
+                    "model": "gpt-4o-mini",
+                    "max_tokens": 800,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            text = resp.json()["choices"][0]["message"]["content"]
+            log.info("Synthesizer: used OpenAI GPT-4o-mini.")
+            return text
+        except Exception as e:
+            log.warning("Synthesizer: OpenAI failed (%s)", e)
+
+    log.error("Synthesizer: all LLM providers failed or no API keys configured.")
+    return None
+
+
 def run_synthesizer(state):
-    """Generate an intelligence briefing every 30 minutes using Claude."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        log.warning("Synthesizer: ANTHROPIC_API_KEY not set — thread will not start.")
+    """Generate an intelligence briefing every 30 minutes."""
+    has_any_key = (
+        os.environ.get("ANTHROPIC_API_KEY")
+        or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+    )
+    if not has_any_key:
+        log.warning("Synthesizer: no LLM API keys set (ANTHROPIC/GEMINI/OPENAI). Skipping.")
         return
 
-    try:
-        import anthropic
-        log.info("Synthesizer thread started (anthropic %s).", anthropic.__version__)
-    except ImportError:
-        log.error("Synthesizer: anthropic package not installed.")
-        return
+    api_key = "multi"  # legacy param, _call_llm reads keys from env directly
+
+    log.info("Synthesizer thread started.")
 
     while True:
         try:
-            client = anthropic.Anthropic(api_key=api_key)
-
             # Gather context
             status = state.get_status()
             events = list(state.events)[:20]
@@ -245,33 +308,29 @@ def run_synthesizer(state):
                 f"Beaufort {wx.get('beaufort', 'N/A')}"
             ) if weather else "unavailable"
 
-            prompt = f"""You are a maritime intelligence analyst. Generate a concise briefing (3-5 paragraphs) about the current situation at the Strait of Hormuz.
-
-Current data:
-- Status: {status.get('is_open')} (confidence: {status.get('confidence')})
-- Risk score: {status.get('risk_score')}/100 ({status.get('risk_level')})
-- PortWatch transit flow: {status.get('portwatch_pct')}% of baseline
-- Active vessels: {status.get('active_vessels')}
-- Brent crude: ${status.get('brent_price') or 'N/A'}
-- Weather: {wx_str}
-
-Recent events:
-{event_text}
-
-Write a professional intelligence briefing. Include risk assessment and outlook."""
-
-            msg = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=800,
-                messages=[{"role": "user", "content": prompt}],
+            prompt = (
+                "You are a maritime intelligence analyst. Generate a concise briefing "
+                "(3-5 paragraphs) about the current situation at the Strait of Hormuz.\n\n"
+                f"Current data:\n"
+                f"- Status: {status.get('is_open')} (confidence: {status.get('confidence')})\n"
+                f"- Risk score: {status.get('risk_score')}/100 ({status.get('risk_level')})\n"
+                f"- PortWatch transit flow: {status.get('portwatch_pct')}% of baseline\n"
+                f"- Active vessels: {status.get('active_vessels')}\n"
+                f"- Brent crude: ${status.get('brent_price') or 'N/A'}\n"
+                f"- Weather: {wx_str}\n\n"
+                f"Recent events:\n{event_text}\n\n"
+                "Write a professional intelligence briefing. Include risk assessment and outlook."
             )
-            briefing_text = msg.content[0].text
+
+            briefing_text = _call_llm(api_key, prompt)
+            if not briefing_text:
+                raise RuntimeError("LLM returned empty response")
 
             state.set_briefing({
                 "text": briefing_text,
                 "risk_score": status.get("risk_score", 50),
                 "generated_at": datetime.now(timezone.utc).isoformat(),
-                "model": "claude-haiku-4-5-20251001",
+                "model": os.environ.get("SYNTHESIZER_MODEL", "auto"),
             })
             state.touch_source("synthesizer")
             log.info("Synthesizer: briefing generated (%d chars).", len(briefing_text))
