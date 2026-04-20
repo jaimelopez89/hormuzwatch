@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import Markdown from "react-markdown";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -67,10 +68,10 @@ export function NLQueryPanel() {
               maxWidth: "88%", whiteSpace: "pre-wrap",
             }}
           >
-            {msg.text}
-            {msg.role === "ai" && streaming && i === history.length - 1 && (
-              <span className="inline-block w-1.5 h-3 ml-0.5 align-middle animate-pulse" style={{ background: "#00d4ff" }} />
-            )}
+            {msg.role === "ai"
+              ? <><Markdown>{msg.text}</Markdown>{streaming && i === history.length - 1 && <span className="inline-block w-1.5 h-3 ml-0.5 align-middle animate-pulse" style={{ background: "#00d4ff" }} />}</>
+              : msg.text
+            }
           </div>
         ))}
         <div ref={bottomRef} />

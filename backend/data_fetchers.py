@@ -309,17 +309,18 @@ def run_synthesizer(state):
             ) if weather else "unavailable"
 
             prompt = (
-                "You are a maritime intelligence analyst. Generate a concise briefing "
-                "(3-5 paragraphs) about the current situation at the Strait of Hormuz.\n\n"
-                f"Current data:\n"
+                "You are a maritime intelligence analyst. Write a SHORT briefing (2 paragraphs max, "
+                "~150 words total) on the Strait of Hormuz situation. Use markdown: **bold** for "
+                "key figures, bullet points for data. No headers. Be direct — skip preamble.\n\n"
+                f"Data:\n"
                 f"- Status: {status.get('is_open')} (confidence: {status.get('confidence')})\n"
-                f"- Risk score: {status.get('risk_score')}/100 ({status.get('risk_level')})\n"
-                f"- PortWatch transit flow: {status.get('portwatch_pct')}% of baseline\n"
+                f"- Risk: {status.get('risk_score')}/100 ({status.get('risk_level')})\n"
+                f"- Transit flow: {status.get('portwatch_pct')}% of baseline\n"
                 f"- Active vessels: {status.get('active_vessels')}\n"
-                f"- Brent crude: ${status.get('brent_price') or 'N/A'}\n"
+                f"- Brent: ${status.get('brent_price') or 'N/A'}\n"
                 f"- Weather: {wx_str}\n\n"
-                f"Recent events:\n{event_text}\n\n"
-                "Write a professional intelligence briefing. Include risk assessment and outlook."
+                f"Key events:\n{event_text}\n\n"
+                "Briefing (markdown, 150 words max):"
             )
 
             briefing_text = _call_llm(api_key, prompt)

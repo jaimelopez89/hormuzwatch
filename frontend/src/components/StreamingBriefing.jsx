@@ -1,5 +1,6 @@
 // frontend/src/components/StreamingBriefing.jsx
 import { useEffect, useState, useRef } from "react";
+import Markdown from "react-markdown";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -47,7 +48,7 @@ export function StreamingBriefing() {
   }, []);
 
   return (
-    <div className="panel flex flex-col" style={{ minHeight: 160 }}>
+    <div className="panel flex flex-col" style={{ maxHeight: 250, overflow: "hidden" }}>
       <div className="flex items-center gap-2 mb-2">
         <div className="panel-label">// AI Briefing — Live Stream</div>
         {live && <span className="font-mono text-xs animate-pulse" style={{ color: "#a78bfa" }}>GENERATING</span>}
@@ -55,9 +56,11 @@ export function StreamingBriefing() {
       {headline && (
         <div className="font-mono text-xs font-bold mb-1" style={{ color: "#e2e8f0" }}>{headline}</div>
       )}
-      <div className="flex-1 font-mono text-xs leading-relaxed" style={{ color: "#94a3b8", whiteSpace: "pre-wrap" }}>
-        {text || <span className="italic" style={{ color: "#64748b" }}>Waiting for next synthesis cycle…</span>}
-        {live && <span className="inline-block w-1.5 h-3 ml-0.5 align-middle animate-pulse" style={{ background: "#a78bfa" }} />}
+      <div className="flex-1 briefing-md text-xs leading-relaxed overflow-y-auto" style={{ color: "#94a3b8" }}>
+        {text
+          ? <><Markdown>{text}</Markdown>{live && <span className="inline-block w-1.5 h-3 ml-0.5 align-middle animate-pulse" style={{ background: "#a78bfa" }} />}</>
+          : <span className="italic" style={{ color: "#64748b" }}>Waiting for next synthesis cycle…</span>
+        }
       </div>
       {latencyMs !== null && (
         <div className="mt-2 font-mono text-xs" style={{ color: "#64748b" }}>
