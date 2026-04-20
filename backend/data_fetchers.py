@@ -215,13 +215,18 @@ def run_synthesizer(state):
     """Generate an intelligence briefing every 30 minutes using Claude."""
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        log.info("Synthesizer: ANTHROPIC_API_KEY not set — skipping.")
+        log.warning("Synthesizer: ANTHROPIC_API_KEY not set — thread will not start.")
         return
 
-    log.info("Synthesizer thread started.")
+    try:
+        import anthropic
+        log.info("Synthesizer thread started (anthropic %s).", anthropic.__version__)
+    except ImportError:
+        log.error("Synthesizer: anthropic package not installed.")
+        return
+
     while True:
         try:
-            import anthropic
             client = anthropic.Anthropic(api_key=api_key)
 
             # Gather context
@@ -272,7 +277,7 @@ Write a professional intelligence briefing. Include risk assessment and outlook.
             log.info("Synthesizer: briefing generated (%d chars).", len(briefing_text))
 
         except Exception as e:
-            log.warning("Synthesizer error: %s", e)
+            log.error("Synthesizer error: %s: %s", type(e).__name__, e)
 
         time.sleep(1800)
 
