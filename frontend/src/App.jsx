@@ -17,7 +17,6 @@ import { FleetGraph } from "./components/FleetGraph";
 import { NLQueryPanel } from "./components/NLQueryPanel";
 import { ThroughputWidget } from "./components/ThroughputWidget";
 import { TelemetryPanel } from "./components/TelemetryPanel";
-import { ReplayControls } from "./components/ReplayControls";
 import { StreamingBriefing } from "./components/StreamingBriefing";
 import { useVesselStream } from "./hooks/useVesselStream";
 import { useBriefingStream } from "./hooks/useBriefingStream";
@@ -114,13 +113,10 @@ export default function App() {
           <div className="h-full overflow-y-auto p-3 flex flex-col gap-3">
             <NLQueryPanel />
             <StreamingBriefing />
+            <FleetGraph vessels={vessels} />
             <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <FleetGraph vessels={vessels} />
               <ThroughputWidget />
-            </div>
-            <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <TelemetryPanel />
-              <ReplayControls />
             </div>
           </div>
         )}

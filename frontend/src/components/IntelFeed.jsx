@@ -52,9 +52,17 @@ export function IntelFeed({ fullHeight = false, compact = false, className = "" 
     return () => esRef.current?.close();
   }, []);
 
+  // Sort by timestamp descending (most recent first). SSE delivers in arrival
+  // order, but backfill / out-of-order producers can interleave old events —
+  // sorting here keeps the feed chronologically correct regardless.
+  const sorted = [...events].sort((a, b) => {
+    const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return tb - ta;
+  });
   const filtered = filter === "ALL"
-    ? events
-    : events.filter((e) => e.severity === filter);
+    ? sorted
+    : sorted.filter((e) => e.severity === filter);
 
   return (
     <div className={`overflow-hidden flex flex-col h-full ${compact ? "p-2" : "panel"} ${className}`}>
