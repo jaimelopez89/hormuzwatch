@@ -51,7 +51,11 @@ export function NLQueryPanel() {
   return (
     <div className="panel flex flex-col" style={{ minHeight: 320 }}>
       <div className="panel-label">// Intelligence Query</div>
-      <p className="text-xs text-dimtext mb-3">Ask about vessels, risk levels, or specific MMSIs.</p>
+      <p className="text-xs text-dimtext mb-3">
+        Ask about any active vessel by <strong>name</strong> or <strong>MMSI</strong>
+        (e.g. <em>"what's going on with SHABAHANG14?"</em>), about sanctioned / Iranian-flagged
+        ships, about the current risk picture, or anything from the recent intelligence feed.
+      </p>
 
       <div className="flex-1 overflow-y-auto flex flex-col gap-2 mb-3" style={{ maxHeight: 240 }}>
         {history.length === 0 && (
