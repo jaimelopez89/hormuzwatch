@@ -73,86 +73,98 @@ function vesselCategory(shipType, mmsi, flag) {
 }
 
 /**
- * Draw a category-specific vessel icon on a 24×24 canvas.
+ * Draw a category-specific vessel icon on a 32×32 canvas.
  * All shapes point "up" (north = bow). Mapbox rotates them by heading.
- *
- * tanker / lng  — wide oval hull, clearly a heavy commercial vessel
- * cargo         — boxy rectangular hull, container/bulk carrier silhouette
- * adversary     — compact teardrop in amber (color alone signals state actor)
- * military      — narrow sharp chevron, aggressive/angular
- * other/default — slim teardrop
+ * Every icon is stroked with a dark outline + faint outer glow so that
+ * overlapping vessels remain visually distinct at any zoom level.
  */
 function drawIconForCategory(category, color) {
-  const size = 24;
+  const size = 32;           // bigger canvas → room for stroke + glow
   const canvas = document.createElement("canvas");
   canvas.width = size; canvas.height = size;
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = color;
   const cx = size / 2;
+  const dy = 4;              // shift every shape down so bow sits ~top-center
+
+  // Outer glow ring — separates adjacent vessels when they overlap
+  ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+  ctx.shadowBlur = 3;
+
+  const stroke = () => {
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(5, 10, 18, 0.95)";
+    ctx.stroke();
+  };
+
+  ctx.fillStyle = color;
 
   if (category === "tanker" || category === "lng") {
     // Wide oval hull — unmistakably a supertanker
     ctx.beginPath();
-    ctx.moveTo(cx,      2);   // bow
-    ctx.lineTo(cx + 8,  7);   // fwd stbd shoulder
-    ctx.lineTo(cx + 9, 17);   // mid stbd (widest)
-    ctx.lineTo(cx + 5, 22);   // stern stbd quarter
-    ctx.lineTo(cx - 5, 22);   // stern port quarter
-    ctx.lineTo(cx - 9, 17);   // mid port (widest)
-    ctx.lineTo(cx - 8,  7);   // fwd port shoulder
+    ctx.moveTo(cx,      2 + dy);
+    ctx.lineTo(cx + 8,  7 + dy);
+    ctx.lineTo(cx + 9, 17 + dy);
+    ctx.lineTo(cx + 5, 22 + dy);
+    ctx.lineTo(cx - 5, 22 + dy);
+    ctx.lineTo(cx - 9, 17 + dy);
+    ctx.lineTo(cx - 8,  7 + dy);
     ctx.closePath();
     ctx.fill();
-    // Centerline superstructure mark
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
-    ctx.fillRect(cx - 1.5, 11, 3, 7);
+    stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(cx - 1.5, 11 + dy, 3, 7);
 
   } else if (category === "cargo") {
     // Wide rectangular hull — container / bulk carrier
     ctx.beginPath();
-    ctx.moveTo(cx,      3);   // bow (pointed)
-    ctx.lineTo(cx + 7,  9);   // fwd stbd shoulder
-    ctx.lineTo(cx + 7, 21);   // stern stbd
-    ctx.lineTo(cx - 7, 21);   // stern port
-    ctx.lineTo(cx - 7,  9);   // fwd port shoulder
+    ctx.moveTo(cx,      3 + dy);
+    ctx.lineTo(cx + 7,  9 + dy);
+    ctx.lineTo(cx + 7, 21 + dy);
+    ctx.lineTo(cx - 7, 21 + dy);
+    ctx.lineTo(cx - 7,  9 + dy);
     ctx.closePath();
     ctx.fill();
-    // Cargo hatch marks
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(cx - 4, 11, 3, 3);
-    ctx.fillRect(cx + 1, 11, 3, 3);
-    ctx.fillRect(cx - 4, 16, 3, 3);
-    ctx.fillRect(cx + 1, 16, 3, 3);
+    stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(cx - 4, 11 + dy, 3, 3);
+    ctx.fillRect(cx + 1, 11 + dy, 3, 3);
+    ctx.fillRect(cx - 4, 16 + dy, 3, 3);
+    ctx.fillRect(cx + 1, 16 + dy, 3, 3);
 
   } else if (category === "adversary") {
-    // Compact teardrop — same compact shape as "other", amber color signals state actor.
-    // Keeping it small and clean avoids pixelation; the gold color is conspicuous enough.
+    // Compact teardrop in amber — color signals state actor
     ctx.beginPath();
-    ctx.moveTo(cx,      2);
-    ctx.lineTo(cx + 5, 20);
-    ctx.lineTo(cx,     17);
-    ctx.lineTo(cx - 5, 20);
+    ctx.moveTo(cx,      2 + dy);
+    ctx.lineTo(cx + 5, 20 + dy);
+    ctx.lineTo(cx,     17 + dy);
+    ctx.lineTo(cx - 5, 20 + dy);
     ctx.closePath();
     ctx.fill();
+    stroke();
 
   } else if (category === "military") {
     // Narrow sharp chevron — naval / law enforcement
     ctx.beginPath();
-    ctx.moveTo(cx,      1);   // bow (sharp)
-    ctx.lineTo(cx + 6, 18);   // stbd wing tip
-    ctx.lineTo(cx,     13);   // tail notch centre
-    ctx.lineTo(cx - 6, 18);   // port wing tip
+    ctx.moveTo(cx,      1 + dy);
+    ctx.lineTo(cx + 6, 18 + dy);
+    ctx.lineTo(cx,     13 + dy);
+    ctx.lineTo(cx - 6, 18 + dy);
     ctx.closePath();
     ctx.fill();
+    stroke();
 
   } else {
     // Default slim teardrop — other, sanctioned
     ctx.beginPath();
-    ctx.moveTo(cx,      2);
-    ctx.lineTo(cx + 5, 20);
-    ctx.lineTo(cx,     17);
-    ctx.lineTo(cx - 5, 20);
+    ctx.moveTo(cx,      2 + dy);
+    ctx.lineTo(cx + 5, 20 + dy);
+    ctx.lineTo(cx,     17 + dy);
+    ctx.lineTo(cx - 5, 20 + dy);
     ctx.closePath();
     ctx.fill();
+    stroke();
   }
 
   return canvas;
@@ -220,10 +232,10 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
         },
       });
 
-      // Vessel icons
+      // Vessel icons (32×32 with stroke + outer glow for separation)
       Object.entries(VESSEL_COLORS).forEach(([cat, color]) => {
         const img = drawIconForCategory(cat, color);
-        const size = 24;
+        const size = 32;
         map.addImage(`vessel-${cat}`, {
           data: img.getContext("2d").getImageData(0, 0, size, size).data,
           width: size, height: size,
@@ -237,10 +249,19 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
         source: "vessels",
         layout: {
           "icon-image": ["concat", "vessel-", ["get", "category"]],
-          "icon-size": 1,
+          // Scale icon by zoom so vessels don't all smear into one blob when zoomed out
+          "icon-size": [
+            "interpolate", ["linear"], ["zoom"],
+            4,  0.35,
+            7,  0.55,
+            9,  0.85,
+            12, 1.15,
+            15, 1.4,
+          ],
           "icon-rotate": ["get", "heading"],
           "icon-rotation-alignment": "map",
           "icon-allow-overlap": true,
+          "icon-pitch-alignment": "map",
         },
       });
 
@@ -301,15 +322,27 @@ export function Map({ vessels, onVesselClick, onMapReady }) {
         if (trail.length > MAX_TRAIL_POINTS) trail.shift();
       }
 
+      // AIS heading is 0–359; 511 = "not available". When unavailable,
+      // fall back to course over ground (direction of travel). Only fall
+      // back to 0 if both are missing — most MarineTraffic feeds have COG.
+      const rawHeading = v.heading;
+      const rawCourse = v.course ?? v.cog;
+      let bearing = 0;
+      if (rawHeading != null && rawHeading !== 511 && rawHeading >= 0 && rawHeading < 360) {
+        bearing = rawHeading;
+      } else if (rawCourse != null && rawCourse >= 0 && rawCourse < 360) {
+        bearing = rawCourse;
+      }
+
       return {
         type: "Feature",
         geometry: { type: "Point", coordinates: [v.lon, v.lat] },
         properties: {
           mmsi: v.mmsi, name: v.name, speed: v.speed,
-          heading: v.heading === 511 ? 0 : (v.heading || 0),
+          heading: bearing,
           category,
           shipType: v.shipType || v.ship_type,
-          flag: v.flag, course: v.course,
+          flag: v.flag, course: rawCourse,
           navStatus: v.navStatus || v.nav_status,
           lat: v.lat, lon: v.lon,
         },

@@ -115,7 +115,7 @@ export default function App() {
             <NLQueryPanel />
             <StreamingBriefing />
             <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <FleetGraph />
+              <FleetGraph vessels={vessels} />
               <ThroughputWidget />
             </div>
             <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
