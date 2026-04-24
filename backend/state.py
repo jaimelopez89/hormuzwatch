@@ -226,10 +226,13 @@ class AppState:
                 self.market[tick["symbol"]] = tick
 
     def set_briefing(self, briefing: dict):
+        # The briefing is a derived OUTPUT (generated from current state), not an
+        # input — so it must not mutate risk_score / the decay clock. Doing so let
+        # an external Kafka synthesizer with its own stale risk=5 baseline clobber
+        # the backend's live risk tracking, which is why briefings ended up saying
+        # "5/100 LOW" while the hero banner correctly showed 65%.
         with self._lock:
             self.briefing = briefing
-            self.risk_score = briefing.get("risk_score", self.risk_score)
-            self._risk_last_updated = time.time()
 
     def add_event(self, event: dict):
         with self._lock:

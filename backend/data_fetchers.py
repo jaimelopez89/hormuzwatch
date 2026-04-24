@@ -276,7 +276,11 @@ def _call_llm(api_key: str, prompt: str) -> str | None:
 
 
 def run_synthesizer(state):
-    """Generate an intelligence briefing every 30 minutes."""
+    """Generate an intelligence briefing every 10 minutes.
+
+    Skips generation during cold-start (before vessel / portwatch data has loaded)
+    so we don't produce a sticky "all quiet" briefing baked with risk=5 / vessels=0.
+    """
     has_any_key = (
         os.environ.get("ANTHROPIC_API_KEY")
         or os.environ.get("GEMINI_API_KEY")
@@ -290,12 +294,30 @@ def run_synthesizer(state):
 
     log.info("Synthesizer thread started.")
 
+    # Let other fetchers (MarineTraffic ingest, PortWatch, markets, news) populate
+    # state before we generate the first briefing. 90s gives them a chance.
+    time.sleep(90)
+
+    COLD_START_VESSEL_FLOOR = 100   # Gulf baseline is ~1000+ vessels
+
     while True:
         try:
-            # Gather context
             status = state.get_status()
             events = list(state.events)[:20]
             weather = state.get_weather()
+
+            active_vessels = status.get("active_vessels") or 0
+            pw_pct = status.get("portwatch_pct")
+
+            # Guard against cold-start briefings that would bake bad numbers
+            # ("0 vessels", "5/100 LOW") into the cached text for 10 minutes.
+            if active_vessels < COLD_START_VESSEL_FLOOR and pw_pct is None and not events:
+                log.warning(
+                    "Synthesizer: skipping (cold start — vessels=%d, portwatch=%s, events=%d)",
+                    active_vessels, pw_pct, len(events),
+                )
+                time.sleep(60)
+                continue
 
             event_text = "\n".join(
                 f"- [{e.get('type')}] {e.get('description', '')[:100]}"
@@ -308,18 +330,33 @@ def run_synthesizer(state):
                 f"Beaufort {wx.get('beaufort', 'N/A')}"
             ) if weather else "unavailable"
 
+            # Flag degraded data so the LLM doesn't confidently assert "0 vessels = calm"
+            degraded_notes = []
+            if active_vessels < COLD_START_VESSEL_FLOOR:
+                degraded_notes.append(
+                    f"vessel feed degraded (only {active_vessels} active — normal baseline is ~1000+); "
+                    "do NOT claim the strait is empty — describe it as a data gap"
+                )
+            if pw_pct is None:
+                degraded_notes.append("PortWatch transit data unavailable this cycle")
+            degraded_str = (
+                "\nDATA QUALITY: " + "; ".join(degraded_notes) + "\n" if degraded_notes else ""
+            )
+
             prompt = (
                 "You are a maritime intelligence analyst. Write a SHORT briefing (2 paragraphs max, "
                 "~150 words total) on the Strait of Hormuz situation. Use markdown: **bold** for "
-                "key figures, bullet points for data. No headers. Be direct — skip preamble.\n\n"
+                "key figures, bullet points for data. No headers. Be direct — skip preamble. "
+                "Use ONLY the data below — do NOT invent figures or incidents.\n\n"
                 f"Data:\n"
                 f"- Status: {status.get('is_open')} (confidence: {status.get('confidence')})\n"
                 f"- Risk: {status.get('risk_score')}/100 ({status.get('risk_level')})\n"
-                f"- Transit flow: {status.get('portwatch_pct')}% of baseline\n"
-                f"- Active vessels: {status.get('active_vessels')}\n"
+                f"- Transit flow: {pw_pct if pw_pct is not None else 'N/A'}% of baseline\n"
+                f"- Active vessels: {active_vessels}\n"
                 f"- Brent: ${status.get('brent_price') or 'N/A'}\n"
-                f"- Weather: {wx_str}\n\n"
-                f"Key events:\n{event_text}\n\n"
+                f"- Weather: {wx_str}\n"
+                f"{degraded_str}"
+                f"\nKey events:\n{event_text}\n\n"
                 "Briefing (markdown, 150 words max):"
             )
 
@@ -330,16 +367,21 @@ def run_synthesizer(state):
             state.set_briefing({
                 "text": briefing_text,
                 "risk_score": status.get("risk_score", 50),
+                "active_vessels": active_vessels,
+                "portwatch_pct": pw_pct,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "model": os.environ.get("SYNTHESIZER_MODEL", "auto"),
             })
             state.touch_source("synthesizer")
-            log.info("Synthesizer: briefing generated (%d chars).", len(briefing_text))
+            log.info(
+                "Synthesizer: briefing generated (%d chars, risk=%s, vessels=%d).",
+                len(briefing_text), status.get("risk_score"), active_vessels,
+            )
 
         except Exception as e:
             log.error("Synthesizer error: %s: %s", type(e).__name__, e)
 
-        time.sleep(1800)
+        time.sleep(600)  # 10 minutes
 
 
 # ─── Windward Insights (scrape crossing data) ──────────────────────────────
